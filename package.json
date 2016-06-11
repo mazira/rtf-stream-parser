@@ -1,0 +1,31 @@
+{
+  "name": "rtf-parser",
+  "version": "1.0.0",
+  "description": "Contains a native Node class for transforming an RTF byte stream into tokens",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mazira/rtf-parser.git"
+  },
+  "keywords": [
+    "RTF",
+    "parser",
+    "rich",
+    "text",
+    "richtext"
+  ],
+  "author": "Ross Johnson <ross@mazira.com>",
+  "license": "MIT",
+  "bugs": {
+    "url": "https://github.com/mazira/rtf-parser/issues"
+  },
+  "homepage": "https://github.com/mazira/rtf-parser#readme",
+  "devDependencies": {
+    "bluebird": "^3.4.0",
+    "chai": "^3.5.0",
+    "mocha": "^2.5.3"
+  }
+}
