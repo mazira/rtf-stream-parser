@@ -1,0 +1,81 @@
+'use strict';
+
+// Node
+const fs = require('fs');
+
+// NPM
+const Promise = require('bluebird');
+const co = require('bluebird').coroutine;
+const chai = require('chai');
+const chaiAsPromised = require("chai-as-promised");
+const expect = require('chai').expect;
+chai.use(chaiAsPromised);
+
+
+// Module
+const Tokenizer = require('../lib/tokenizer');
+const DeEncapsulator = require('../lib/de-encapsulator');
+const utils = require('./utils');
+
+describe('De-encapsulator', function () {
+  const process = function (inputs) {
+    return utils.streamFlow([new Tokenizer(), new DeEncapsulator()], inputs);
+  }
+
+  describe('detection', function () {
+    it('should throw an error if input doesn\'t start with "{\\rtf1"', co(function* () {
+      yield expect(process(['']))
+        .to.be.rejectedWith('File should start with');
+
+      yield expect(process(['{']))
+        .to.be.rejectedWith('File should start with');
+
+      yield expect(process(['\\word\\WoRd']))
+        .to.be.rejectedWith('File should start with');
+
+      yield expect(process(['{\\word\\WoRd}']))
+        .to.be.rejectedWith('File should start with');
+
+      yield expect(process(['{\\rtf2\\WoRd}']))
+        .to.be.rejectedWith('File should start with');
+    }));
+
+    it('should throw an error if \\fromhtml1 not in first 10 tokens', co(function* () {
+      yield expect(process(['{\\rtf1']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+
+      yield expect(process(['{\\rtf1\\bin10 \\fromhtml1}']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+
+      yield expect(process(['{\\rtf1\\t3}']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+
+      yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\t10\\fromhtml1}']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+
+      yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml2\\t10}']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+
+      yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9}']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+    }));
+
+    it('should throw an error if any tokens besides "{" or control words are within first 10', co(function* () {
+      yield expect(process(['{\\rtf1\\t3\\t4 some text\\fromhtml1']))
+        .to.be.rejectedWith('Not encapsulated HTML file');
+    }));
+
+    it('should not throw an error if \\fromhtml1 in first 10 tokens', co(function* () {
+      yield process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1}']);
+      yield process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml1\\t10']);
+    }));
+
+    it('should properly decapsulate the spec example', co(function* () {
+      const sin = fs.createReadStream(__dirname + '/examples/encapsulated.rtf');
+      const result = yield utils.streamFlow([sin, new Tokenizer(), new DeEncapsulator()]);
+      const html = result.join('');
+      const html2 = fs.readFileSync(__dirname + '/examples/encapsulated.html', 'utf8');
+      expect(html).to.eql(html2);
+    }));
+  });
+});
