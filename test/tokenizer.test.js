@@ -33,16 +33,16 @@ describe('RTFParser', function () {
       expect(result).to.be.an('array').of.length(3);
       expect(result[0]).to.eql({type: 'WORD', word: 'word'});
       expect(result[1]).to.eql({type: 'WORD', word: 'WoRd'});
-      expect(result[2]).to.eql({type: 'TEXT', text: ' '});
+      expect(result[2]).to.eql({type: 'TEXT', data: new Buffer(' ')});
     }));
 
     it('should not eat spaces after control sysmbols', co(function* () {
       const result = yield process(['\\{ \\}  ']);
       expect(result).to.be.an('array').of.length(4);
       expect(result[0]).to.eql({type: 'SYMBOL', word: '{'});
-      expect(result[1]).to.eql({type: 'TEXT', text: ' '});
+      expect(result[1]).to.eql({type: 'TEXT', data: new Buffer(' ')});
       expect(result[2]).to.eql({type: 'SYMBOL', word: '}'});
-      expect(result[3]).to.eql({type: 'TEXT', text: '  '});
+      expect(result[3]).to.eql({type: 'TEXT', data: new Buffer('  ')});
     }));
 
     it('should allow control word numerical param', co(function* () {
@@ -63,7 +63,7 @@ describe('RTFParser', function () {
       const result = yield process(['\\word0 hi\\', '{\\\\\\', '}']);
       expect(result).to.be.an('array').of.length(5);
       expect(result[0]).to.eql({type: 'WORD', word: 'word', param: 0});
-      expect(result[1]).to.eql({type: 'TEXT', text: 'hi'});
+      expect(result[1]).to.eql({type: 'TEXT', data: new Buffer('hi')});
       expect(result[2]).to.eql({type: 'SYMBOL', word: '{'});
       expect(result[3]).to.eql({type: 'SYMBOL', word: '\\'});
       expect(result[4]).to.eql({type: 'SYMBOL', word: '}'});
@@ -74,7 +74,7 @@ describe('RTFParser', function () {
       expect(result).to.be.an('array').of.length(2);
 
       const buf = new Buffer('\\hi2');
-      expect(result[0]).to.eql({type: 'WORD', word: 'bin', param: 4, data: buf, length: 4});
+      expect(result[0]).to.eql({type: 'WORD', word: 'bin', param: 4, data: buf});
       expect(result[1]).to.eql({type: 'WORD', word: 'hi', param: 3});
     }));
 
@@ -91,21 +91,27 @@ describe('RTFParser', function () {
       const result = yield process(['\\bin10 hi']);
       expect(result).to.be.an('array').of.length(1);
 
-      expect(result[0]).to.have.property('word', 'bin');
-      expect(result[0]).to.have.property('param', 10);
-      expect(result[0]).to.have.property('length', 2);
-      expect(result[0]).to.have.property('data');
-      expect(result[0].data.toString('ascii', 0, 2)).eql('hi');
+      expect(result[0]).to.eql({
+        type: 'WORD', word: 'bin', param: 10, data: new Buffer('hi')
+      });
     }));
 
     it("should handle \\' hex excape", co(function* () {
       const result = yield process(["\\'a0\\'FF"]);
       expect(result).to.be.an('array').of.length(2);
 
-      const buf1 = new Buffer([160]);
-      const buf2 = new Buffer([255]);
-      expect(result[0]).to.eql({type: 'SYMBOL', word: "'", data: buf1, nibbles: 2});
-      expect(result[1]).to.eql({type: 'SYMBOL', word: "'", data: buf2, nibbles: 2});
+      expect(result[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer([160])});
+      expect(result[1]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer([255])});
+    }));
+
+    it("should handle \\' hex excape early termination", co(function* () {
+      const result = yield process(["\\'F"]);
+      expect(result).to.be.an('array').of.length(1);
+      expect(result[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer(0)});
+
+      const result2 = yield process(["\\'"]);
+      expect(result2).to.be.an('array').of.length(1);
+      expect(result2[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer(0)});
     }));
   });
 });

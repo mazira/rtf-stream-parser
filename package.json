@@ -28,5 +28,8 @@
     "chai": "^3.5.0",
     "chai-as-promised": "^5.3.0",
     "mocha": "^2.5.3"
+  },
+  "dependencies": {
+    "iconv-lite": "^0.4.13"
   }
 }
