@@ -53,7 +53,7 @@ describe('De-encapsulator', function () {
       yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\t10\\fromhtml1}']))
         .to.be.rejectedWith('Not encapsulated HTML file');
 
-      yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml2\\t10}']))
+      yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtm\\t10}']))
         .to.be.rejectedWith('Not encapsulated HTML file');
 
       yield expect(process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9}']))
@@ -69,13 +69,32 @@ describe('De-encapsulator', function () {
       yield process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1}']);
       yield process(['{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml1\\t10']);
     }));
-
-    it('should properly decapsulate the spec example', co(function* () {
-      const sin = fs.createReadStream(__dirname + '/examples/encapsulated.rtf');
-      const result = yield utils.streamFlow([sin, new Tokenizer(), new DeEncapsulator()]);
-      const html = result.join('');
-      const html2 = fs.readFileSync(__dirname + '/examples/encapsulated.html', 'utf8');
-      expect(html).to.eql(html2);
-    }));
   });
+
+  describe('text output', function () {
+    describe('from htmltag destination', function () {
+      it('should be correct', co(function* () {
+        const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag243 <sometag/>}}';
+        const result = yield process([rtf]);
+        const html = result.join('');
+        expect(html).to.eql('<sometag/>');
+      }));
+
+      it.skip('should interpret bytes in default codepage', co(function* () {
+        // The bullet point is 0x95 (149) in Windows-1252, but 0x2022 in Unicode
+        const rtf = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag243 \\'95}}";
+        const result = yield process([rtf]);
+        const html = result.join('');
+        expect(html).to.eql(String.fromCodePoint(0x2022));
+      }));
+    });
+  });
+
+  it('should properly decapsulate the spec example', co(function* () {
+    const sin = fs.createReadStream(__dirname + '/examples/encapsulated.rtf');
+    const result = yield utils.streamFlow([sin, new Tokenizer(), new DeEncapsulator()]);
+    const html = result.join('');
+    const html2 = fs.readFileSync(__dirname + '/examples/encapsulated.html', 'utf8');
+    expect(html).to.eql(html2);
+  }));
 });
