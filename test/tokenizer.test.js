@@ -39,9 +39,9 @@ describe('RTFParser', function () {
     it('should not eat spaces after control sysmbols', co(function* () {
       const result = yield process(['\\{ \\}  ']);
       expect(result).to.be.an('array').of.length(4);
-      expect(result[0]).to.eql({type: 'SYMBOL', word: '{'});
+      expect(result[0]).to.eql({type: 'WORD', word: '{'});
       expect(result[1]).to.eql({type: 'TEXT', data: new Buffer(' ')});
-      expect(result[2]).to.eql({type: 'SYMBOL', word: '}'});
+      expect(result[2]).to.eql({type: 'WORD', word: '}'});
       expect(result[3]).to.eql({type: 'TEXT', data: new Buffer('  ')});
     }));
 
@@ -64,9 +64,9 @@ describe('RTFParser', function () {
       expect(result).to.be.an('array').of.length(5);
       expect(result[0]).to.eql({type: 'WORD', word: 'word', param: 0});
       expect(result[1]).to.eql({type: 'TEXT', data: new Buffer('hi')});
-      expect(result[2]).to.eql({type: 'SYMBOL', word: '{'});
-      expect(result[3]).to.eql({type: 'SYMBOL', word: '\\'});
-      expect(result[4]).to.eql({type: 'SYMBOL', word: '}'});
+      expect(result[2]).to.eql({type: 'WORD', word: '{'});
+      expect(result[3]).to.eql({type: 'WORD', word: '\\'});
+      expect(result[4]).to.eql({type: 'WORD', word: '}'});
     }));
 
     it('should not detect control words in binary data', co(function* () {
@@ -100,18 +100,18 @@ describe('RTFParser', function () {
       const result = yield process(["\\'a0\\'FF"]);
       expect(result).to.be.an('array').of.length(2);
 
-      expect(result[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer([160])});
-      expect(result[1]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer([255])});
+      expect(result[0]).to.eql({type: 'WORD', word: "'", data: new Buffer([160])});
+      expect(result[1]).to.eql({type: 'WORD', word: "'", data: new Buffer([255])});
     }));
 
     it("should handle \\' hex excape early termination", co(function* () {
       const result = yield process(["\\'F"]);
       expect(result).to.be.an('array').of.length(1);
-      expect(result[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer(0)});
+      expect(result[0]).to.eql({type: 'WORD', word: "'", data: new Buffer(0)});
 
       const result2 = yield process(["\\'"]);
       expect(result2).to.be.an('array').of.length(1);
-      expect(result2[0]).to.eql({type: 'SYMBOL', word: "'", data: new Buffer(0)});
+      expect(result2[0]).to.eql({type: 'WORD', word: "'", data: new Buffer(0)});
     }));
   });
 });

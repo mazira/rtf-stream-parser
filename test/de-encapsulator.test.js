@@ -74,34 +74,60 @@ describe('De-encapsulator', function () {
   describe('text output', function () {
     describe('from htmltag destination', function () {
       it('should handle control symbol octet escapes', co(function* () {
-        const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag243 <sometag\\{/>}}';
+        const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag <sometag\\{/>}}';
         const result = yield process([rtf]);
         const html = result.join('');
         expect(html).to.eql('<sometag{/>');
       }));
 
+      it('should handle control word unicode escapes', co(function* () {
+        const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag \\lquote hi\\bullet}}';
+        const result = yield process([rtf]);
+        const html = result.join('');
+        expect(html).to.eql('‘hi•');
+      }));
+
+      it('should ignore other control words', co(function* () {
+        const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag\\htmlrtf <sometag/>\\htmlrtf0}}';
+        const result = yield process([rtf]);
+        const html = result.join('');
+        expect(html).to.eql('<sometag/>');
+      }));
+
       it('should interpret hex escapes in specified default code page', co(function* () {
         // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
-        const input = ["{\\rtf1\\ansi\\ansicpg1253\\fromhtml1\\t6\\t7{\\*\\htmltag243 \\'f0}}"];
+        const input = ["{\\rtf1\\ansi\\ansicpg1253\\fromhtml1\\t6\\t7{\\*\\htmltag\\'f0}}"];
         const result = yield process(input);
         const html = result.join('');
         expect(html).to.eql('π');
       }));
 
       it('should interpret hex escapes in Windows-1252 codepage if no default given', co(function* () {
-        // The bullet point is 0x95 (149) in Windows-1252, but 0x2022 in Unicode
-        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag243 \\'95}}"];
+        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag\\'95}}"];
         const result = yield process(input);
         const html = result.join('');
         expect(html).to.eql('•');
       }));
 
       it("should interpret any 8-bit values in default code page (shouldn't happen)", co(function* () {
-        // The bullet point is 0x95 (149) in Windows-1252, but 0x2022 in Unicode
-        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag243 hi", new Buffer([0x95]) , "}}"];
+        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag hi", new Buffer([0x95]) , "}}"];
         const result = yield process(input);
         const html = result.join('');
         expect(html).to.eql('hi•');
+      }));
+
+      it('should properly output Unicode escapes', co(function* () {
+        const input = ['{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag hi\\u8226\\u127808'];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('hi•' + String.fromCodePoint(0x1F340));
+      }));
+
+      it('should properly handle negative Unicode values', co(function* () {
+        const input = ['{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag hi\\u-4064}}'];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('hi' + String.fromCodePoint(0xF020));
       }));
     });
   });
