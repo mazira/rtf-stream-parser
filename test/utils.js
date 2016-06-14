@@ -11,7 +11,16 @@ const Promise = require('bluebird');
  * the promise will be rejected with the error.
  */
 module.exports.streamFlow = function process(streams, inputs) {
-  return new Promise(function (resolve, reject) {
+  return new Promise(function (resolve, _reject) {
+    const reject = (err) => {
+      // Unpipe streams together
+      for (let i = 1; i < streams.length; i++) {
+        streams[i-1].unpipe();
+      }
+
+      _reject(err);
+    };
+
     // Pipe streams together
     for (let i = 1; i < streams.length; i++) {
       streams[i-1].pipe(streams[i]);

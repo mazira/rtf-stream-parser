@@ -13,8 +13,8 @@ chai.use(chaiAsPromised);
 
 
 // Module
-const Tokenizer = require('../lib/tokenizer');
-const DeEncapsulator = require('../lib/de-encapsulator');
+const Tokenizer = require('../').Tokenizer;
+const DeEncapsulator = require('../').DeEncapsulator;
 const utils = require('./utils');
 
 describe('De-encapsulator', function () {
