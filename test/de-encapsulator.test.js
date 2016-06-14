@@ -72,7 +72,7 @@ describe('De-encapsulator', function () {
   });
 
   describe('text output', function () {
-    describe('from htmltag destination', function () {
+    describe('from inside htmltag destinations', function () {
       it('should handle control symbol octet escapes', co(function* () {
         const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag <sometag\\{/>}}';
         const result = yield process([rtf]);
@@ -128,6 +128,70 @@ describe('De-encapsulator', function () {
         const result = yield process(input);
         const html = result.join('');
         expect(html).to.eql('hi' + String.fromCodePoint(0xF020));
+      }));
+    });
+
+    describe('from outside htmltag destinations', function () {
+      it('should handle control symbol octet escapes', co(function* () {
+        const input = ['{\\rtf1\\ansi\\ansicpg1252\\fromhtml1{{{{{text\\}}}}}}}'];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('text}');
+      }));
+
+      it('should handle control word unicode escapes', co(function* () {
+        const input = ['{\\rtf1\\ansi\\ansicpg1252\\fromhtml1{{{{{text\\lquote\\bullet}}}}}}}'];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('text‘•');
+      }));
+
+      it("should interpret hex escapes in current font's codepage", co(function* () {
+        // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
+        // Use "f0" before text
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1{\\fonttbl{\\f0\\fcharset161}}\\f0\\'f0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('π');
+      }));
+
+      it('should use default font if no current font', co(function* () {
+        // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
+        // Use "deff0" instead of "f0"
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0\\fcharset161}}\\'f0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('π');
+      }));
+
+      it('should allow \\cpg to override \\fcharset', co(function* () {
+        // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
+        // Use "deff0" instead of "f0"
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0\\cpg1253\\fcharset255}}\\'f0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('π');
+      }));
+
+      it('should ignore text inside htmlrtf ignores', co(function* () {
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf hello\\htmlrtf0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('');
+      }));
+
+      it('should track htmlrtf state in groups', co(function* () {
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf{\\htmlrtf0}hello\\htmlrtf0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('');
+      }));
+
+      it('should track \\f changes inside htmlrtf ignores', co(function* () {
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f1\\cpg1253}}\\htmlrtf\\f1\\htmlrtf0\\'f0}"];
+        const result = yield process(input);
+        const html = result.join('');
+        expect(html).to.eql('π');
       }));
     });
   });
