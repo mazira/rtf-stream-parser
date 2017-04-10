@@ -1,35 +1,42 @@
 {
-  "name": "rtf-parser",
-  "version": "1.0.0",
+  "name": "rtf-stream-parser",
+  "version": "1.1.0",
   "description": "Contains a native Node class for transforming an RTF byte stream into tokens",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "test": "mocha --reporter spec"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mazira/rtf-parser.git"
+    "url": "git+https://github.com/mazira/rtf-stream-parser.git"
   },
   "keywords": [
     "RTF",
     "parser",
     "rich",
     "text",
-    "richtext"
+    "richtext",
+    "deencapsulator",
+    "de-encapsulator",
+    "deencapsulte",
+    "de-encapsulate",
+    "encapsulator",
+    "encapsulate",
+    "outlook"
   ],
   "author": "Ross Johnson <ross@mazira.com>",
   "license": "MIT",
   "bugs": {
-    "url": "https://github.com/mazira/rtf-parser/issues"
+    "url": "https://github.com/mazira/rtf-stream-parser/issues"
   },
-  "homepage": "https://github.com/mazira/rtf-parser#readme",
+  "homepage": "https://github.com/mazira/rtf-stream-parser#readme",
   "devDependencies": {
-    "bluebird": "^3.4.0",
+    "bluebird": "^3.5.0",
     "chai": "^3.5.0",
-    "chai-as-promised": "^5.3.0",
-    "mocha": "^2.5.3"
+    "chai-as-promised": "^6.0.0",
+    "mocha": "^3.2.0"
   },
   "dependencies": {
-    "iconv-lite": "^0.4.13"
+    "iconv-lite": "^0.4.15"
   }
 }

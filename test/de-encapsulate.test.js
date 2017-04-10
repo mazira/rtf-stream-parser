@@ -7,20 +7,20 @@ const fs = require('fs');
 const Promise = require('bluebird');
 const co = require('bluebird').coroutine;
 const chai = require('chai');
-const chaiAsPromised = require("chai-as-promised");
+const chaiAsPromised = require('chai-as-promised');
 const expect = require('chai').expect;
 chai.use(chaiAsPromised);
 
 
 // Module
-const Tokenizer = require('../').Tokenizer;
-const DeEncapsulator = require('../').DeEncapsulator;
+const Tokenize = require('../').Tokenize;
+const DeEncapsulate = require('../').DeEncapsulate;
 const utils = require('./utils');
 
 describe('De-encapsulator', function () {
   const process = co(function* (input) {
     input = Array.isArray(input) ? input : [input];
-    const result = yield utils.streamFlow([new Tokenizer(), new DeEncapsulator()], input);
+    const result = yield utils.streamFlow([new Tokenize(), new DeEncapsulate()], input);
     return result.join('');
   });
 
@@ -235,7 +235,7 @@ describe('De-encapsulator', function () {
 
   it('should properly decapsulate the spec example', co(function* () {
     const sin = fs.createReadStream(__dirname + '/examples/encapsulated.rtf');
-    const result = yield utils.streamFlow([sin, new Tokenizer(), new DeEncapsulator()]);
+    const result = yield utils.streamFlow([sin, new Tokenize(), new DeEncapsulate()]);
     const html = result.join('');
     const html2 = fs.readFileSync(__dirname + '/examples/encapsulated.html', 'utf8');
     expect(html).to.eql(html2);
