@@ -174,6 +174,20 @@ describe('De-encapsulator', function () {
         expect(html).to.eql('hi•');
       }));
 
+      it("should ignore control words inside content html", co(function* () {
+        const input = '{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag {\\htmlrtf hi}}hi}';
+        const html = yield process(input);
+        expect(html).to.eql('hihi');
+      }))
+
+      // Form https://github.com/mazira/rtf-stream-parser/issues/1
+      it('should extract href inner text properly', co(function* () {
+        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7",
+          '{\\*\\htmltag84 <a href="mailto:address@emailhost.net">}\\htmlrtf {\\field{\\*\fldinst{HYPERLINK "mailto:address@emailhost.net"}}{\\fldrslt\\cf1\\ul \\htmlrtf0 address@emailhost.net\\htmlrtf }\\htmlrtf0 \\htmlrtf }\\htmlrtf0 {\\*\\htmltag92 </a>}',
+          '}'];
+        const html = yield process(input);
+        expect(html).to.eql('<a href="mailto:address@emailhost.net">address@emailhost.net</a>');
+      }))
     });
 
     describe('from outside htmltag destinations', function () {
