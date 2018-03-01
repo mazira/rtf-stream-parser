@@ -18,9 +18,9 @@ const DeEncapsulate = require('../').DeEncapsulate;
 const utils = require('./utils');
 
 describe('De-encapsulator', function () {
-  const process = co(function* (input) {
+  const process = co(function* (input, mode, prefix) {
     input = Array.isArray(input) ? input : [input];
-    const result = yield utils.streamFlow([new Tokenize(), new DeEncapsulate()], input);
+    const result = yield utils.streamFlow([new Tokenize(), new DeEncapsulate(mode, prefix)], input);
     return result.join('');
   });
 
@@ -42,7 +42,7 @@ describe('De-encapsulator', function () {
         .to.be.rejectedWith('File should start with');
     }));
 
-    it('should throw an error if \\fromhtml1 not in first 10 tokens', co(function* () {
+    it('should throw an error if \\fromhtml1 not in first 10 tokens (and in HTML-only mode)', co(function* () {
       yield expect(process('{\\rtf1}'))
         .to.be.rejectedWith('Not encapsulated HTML file');
 
@@ -72,6 +72,13 @@ describe('De-encapsulator', function () {
       yield process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml1\\t10}');
     }));
 
+    it('should not throw an error if \\fromhtml1 in first 10 tokens but in text-only mode', co(function* () {
+      yield expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1}', 'text'))
+        .to.be.rejectedWith('Not encapsulated text file');
+      yield expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtml1\\t10}', 'text'))
+        .to.be.rejectedWith('Not encapsulated text file');
+    }));
+
     it('should ignore any content after closing bracket', co(function* () {
       const input = '{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1 hello}hello';
       const html = yield process(input);
@@ -79,13 +86,19 @@ describe('De-encapsulator', function () {
     }));
   });
 
-  describe('text output', function () {
+  describe('html text output', function () {
     describe('with Unicode escapes', function () {
       it('should properly decode characters', co(function* () {
         const input = '{\\rtf1\\ansi\\fromhtml1{{{{{{hi\\u8226}}}}}}}';
         const html = yield process(input);
         expect(html).to.eql('hi•');
       }));
+
+      it('should prefix output string with "html:" if desired', co(function* () {
+        const input = '{\\rtf1\\ansi\\fromhtml1{{{{{{hi\\u8226}}}}}}}';
+        const html = yield process(input, 'either', true);
+        expect(html).to.eql('html:hi•');
+      }))
 
       it('should skip 1 character after by default', co(function* () {
         const input = '{\\rtf1\\ansi\\fromhtml1{{{{{{hi\\u8226hello}}}}}}}';
@@ -169,7 +182,7 @@ describe('De-encapsulator', function () {
       }));
 
       it("should interpret any 8-bit values in default code page (shouldn't happen)", co(function* () {
-        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag hi", new Buffer([0x95]) , "}}"];
+        const input = ["{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag hi", new Buffer([0x95]), "}}"];
         const html = yield process(input);
         expect(html).to.eql('hi•');
       }));
@@ -245,6 +258,29 @@ describe('De-encapsulator', function () {
         expect(html).to.eql('π');
       }));
     });
+  });
+
+  describe('from text', () => {
+    const input = "{\\rtf1\\ansi\\ansicpg1252\\fromtext \\fbidis \\deff0{\\fonttbl\r\n{\\f0\\fswiss\\fcharset0 Arial;}"
+      + "\r\n{\\f1\\fmodern Courier New;}\r\n{\\f2\\fnil\\fcharset2 Symbol;}\r\n{\\f3\\fmodern\\fcharset0 Courier New;}}"
+      + "\r\n{\\colortbl\\red0\\green0\\blue0;\\red0\\green0\\blue255;}\r\n\\uc1\\pard\\plain\\deftab360 \\f0\\fs20 "
+      + "Plain text body: ! < > \" ' \\'80 \\'9c \\'a4 \\'b4 \\'bc \\'bd \\u-10175 ?\\u-8434 ? \\u-10137 ?\\u-8808 ? "
+      + "\\u-10179 ?\\u-8704 ?\\par\r\n}"
+
+    it('should properly de-encapsulate in "text" mode', co(function* () {
+      const text = yield process(input, 'text');
+      expect(text).to.eql('Plain text body: ! < > " \' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n');
+    }));
+
+    it('should properly de-encapsulate in "either" mode', co(function* () {
+      const text = yield process(input, 'either');
+      expect(text).to.eql('Plain text body: ! < > " \' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n');
+    }));
+
+    it('should properly prefix with "text:" if requested', co(function* () {
+      const text = yield process(input, 'either', true);
+      expect(text).to.eql('text:Plain text body: ! < > " \' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n');
+    }));
   });
 
   it('should properly decapsulate the spec example', co(function* () {

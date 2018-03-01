@@ -1,7 +1,7 @@
 # rtf-stream-parser
 Contains a native Node stream classes for parsing Rich Text Format (RTF) into token
-objects, and another for de-encapsulating embedded HTML content. We use this
-code in [GoldFynch](https://goldfynch.com), an e-discovery platform, for extracting HTML email bodies that have passed through Outlook mail systems.
+objects, and another for de-encapsulating embedded HTML or text content. We use this
+code in [GoldFynch](https://goldfynch.com), an e-discovery platform, for extracting HTML and text email bodies that have passed through Outlook mail systems.
 
 ## Simple Usage
 
@@ -13,7 +13,7 @@ const input = fs.createReadStream('encapsulated.rtf');
 const output = fs.createWriteStream('output.html');
 
 input.pipe(new Tokenize())
-     .pipe(new DeEncapsulate())
+     .pipe(new DeEncapsulate('either', true))
      .pipe(output);
 ```
 
@@ -53,13 +53,20 @@ so destination groups will be output as a `GROUP_START` token followed by a `CON
 
 ## De-Encapsulate Class
 
-This class takes RTF-ecapsuulated-HTML data,
-[de-encapsualtes it](https://msdn.microsoft.com/en-us/library/ee159984(v=exchg.80).aspx),
-and produces HTML output.
+This class takes RTF-ecapsuulated text (HTML or text),
+[de-encapsulates it](https://msdn.microsoft.com/en-us/library/ee159984(v=exchg.80).aspx),
+and produces a string output.
 This Transform class takes tokenized object output from the Tokenize class and produces string chunks of output HTML.
 
 Apart from it's specific use, this class also serves as an example of how to consume
 and use the Tokenize class.
+
+The constructor takes two optional arguments:
+```javascript
+new DeEncapsulate([mode, [prefix]]);
+```
+- mode - One of `"html"`, `"text"`, or `"either"`, defaults to `"html"`. If the given RTF stream is not encapsulated text, or does not match the given mode (e.g. is encapsulated text but mode is set to `"html"`), the stream will emit an error.
+- prefix - `true` or `false`, defaults to false. If `true`, the output text will have either `"html:"` or `"text:"` prefixed to the output string. This is helpful for detecting the encapsulation mode when using `"either"`.
 
 ## Future Work
 
