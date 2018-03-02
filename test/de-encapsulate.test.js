@@ -257,6 +257,12 @@ describe('De-encapsulator', function () {
         const html = yield process(input);
         expect(html).to.eql('π');
       }));
+
+      it('should buffer multiple text runs to decode at once', co(function* () {
+        const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f1\\cpg936}}\\htmlrtf\\f1\\htmlrtf0\\'a5\\'c6\\'a5\\'e5}";
+        const html = yield process(input);
+        expect(html).to.eql('テュ');
+      }));
     });
   });
 
@@ -266,6 +272,12 @@ describe('De-encapsulator', function () {
       + "\r\n{\\colortbl\\red0\\green0\\blue0;\\red0\\green0\\blue255;}\r\n\\uc1\\pard\\plain\\deftab360 \\f0\\fs20 "
       + "Plain text body: ! < > \" ' \\'80 \\'9c \\'a4 \\'b4 \\'bc \\'bd \\u-10175 ?\\u-8434 ? \\u-10137 ?\\u-8808 ? "
       + "\\u-10179 ?\\u-8704 ?\\par\r\n}"
+
+    it('should handle Unicode surrogate pairs with the default \\uc skip of 1', co(function* () {
+      const input = "{\\rtf1\\ansi\\ansicpg1252\\fromtext{{{{{{\\u-10179 ?\\u-8704 ?}}}}}}}";
+      const text = yield process(input, 'text');
+      expect(text).to.eql('😀');
+    }));
 
     it('should properly de-encapsulate in "text" mode', co(function* () {
       const text = yield process(input, 'text');
@@ -289,5 +301,13 @@ describe('De-encapsulator', function () {
     const html = result.join('');
     const html2 = fs.readFileSync(__dirname + '/examples/encapsulated.html', 'utf8');
     expect(html).to.eql(html2);
+  }));
+
+  it('should properly decapsulate the JIS example', co(function* () {
+    const sin = fs.createReadStream(__dirname + '/examples/jis-test.rtf');
+    const result = yield utils.streamFlow([sin, new Tokenize(), new DeEncapsulate('text')]);
+    const text = result.join('');
+    const text2 = fs.readFileSync(__dirname + '/examples/jis-test.txt', 'utf8');
+    expect(text.trim()).to.eql(text2.trim().replace(/\n/g, '\r\n'));
   }));
 });

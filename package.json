@@ -1,6 +1,6 @@
 {
   "name": "rtf-stream-parser",
-  "version": "1.2.1",
+  "version": "1.2.2",
   "description": "Contains a native Node class for transforming an RTF byte stream into tokens",
   "main": "index.js",
   "scripts": {
