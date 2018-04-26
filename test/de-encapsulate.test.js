@@ -195,8 +195,11 @@ describe('De-encapsulator', function () {
 
       // Form https://github.com/mazira/rtf-stream-parser/issues/1
       it('should extract href inner text properly', co(function* () {
-        const input = ["{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7",
-          '{\\*\\htmltag84 <a href="mailto:address@emailhost.net">}\\htmlrtf {\\field{\\*\fldinst{HYPERLINK "mailto:address@emailhost.net"}}{\\fldrslt\\cf1\\ul \\htmlrtf0 address@emailhost.net\\htmlrtf }\\htmlrtf0 \\htmlrtf }\\htmlrtf0 {\\*\\htmltag92 </a>}',
+        const input = [
+          '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7',
+          '{\\*\\htmltag84 <a href="mailto:address@emailhost.net">}',
+          '\\htmlrtf {\\field{\\*\fldinst{HYPERLINK "mailto:address@emailhost.net"}}{\\fldrslt\\cf1\\ul \\htmlrtf0 address@emailhost.net\\htmlrtf }\\htmlrtf0 \\htmlrtf }\\htmlrtf0',
+          '{\\*\\htmltag92 </a>}',
           '}'];
         const html = yield process(input);
         expect(html).to.eql('<a href="mailto:address@emailhost.net">address@emailhost.net</a>');
@@ -262,6 +265,42 @@ describe('De-encapsulator', function () {
         const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f1\\cpg936}}\\htmlrtf\\f1\\htmlrtf0\\'a5\\'c6\\'a5\\'e5}";
         const html = yield process(input);
         expect(html).to.eql('テュ');
+      }));
+
+      it('should ignore text from \\pntext group', co(function* () {
+        const input = [
+          '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t5\\t6\\t7',
+          '{\\*\\htmltag64 <li>}',
+          '\\htmlrtf {{\\*\\pn\\pnlvlblt\\pnf2\\pnindent360{\\pntxtb\'b7}}\\htmlrtf0 \\li360 \\fi-360 {\\pntext *\\tab}Item 1',
+          '{\\*\\htmltag244 <o:p>}',
+          '{\\*\\htmltag252 </o:p>}',
+          '\\htmlrtf\\par}\\htmlrtf0',
+          '{\\*\\htmltag72 </li>}',
+          '}'
+        ];
+        const html = yield process(input);
+        expect(html).to.eql('<li>Item 1<o:p></o:p></li>');
+      }));
+
+      it('should ignore formatConverter destination', co(function* () {
+        const input = [
+          '{\\rtf1\\ansi\\fbidis\\ansicpg936\\deff0\\fromhtml1{\\fonttbl}',
+          '{\\*\\generator Microsoft Exchange Server;}',
+          '{\\*\\formatConverter converted from html;}',
+          '}'
+        ];
+        const html = yield process(input);
+        expect(html).to.eql('');
+      }));
+
+      it('should ignore any optional destinations (even unknown ones)', co(function* () {
+        const input = [
+          '{\\rtf1\\ansi\\fbidis\\ansicpg936\\deff0\\fromhtml1{\\fonttbl}',
+          '{\\*\\someNewGroup some stupid text;}',
+          '}'
+        ];
+        const html = yield process(input);
+        expect(html).to.eql('');
       }));
     });
   });
