@@ -360,6 +360,12 @@ describe('DeEncapsulate', () => {
             const text = await process(input, { mode: 'either', prefix: true });
             expect(text).to.eql('text:Plain text body: ! < > " \' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n');
         });
+
+        it('should handle \\par and \\line both as CRLF', async () => {
+            const input = "{\\rtf1\\ansi\\ansicpg1252\\fromtext{{{{{{\\par\\line\\tab}}}}}}}";
+            const text = await process(input, { mode: 'text' });
+            expect(text).to.eql('\r\n\r\n\t');
+        });
     });
 
     it('should properly decapsulate the spec example', async () => {

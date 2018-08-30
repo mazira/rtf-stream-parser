@@ -46,6 +46,7 @@ const defaultOptions: NeededOptions = {
 
 const escapes: { [word: string]: string } = {
     'par': '\r\n',
+    'line': '\r\n',
     'tab': '\t',
     '{': '{',
     '}': '}',
