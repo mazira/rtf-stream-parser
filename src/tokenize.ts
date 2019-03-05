@@ -86,9 +86,10 @@ export class Tokenize extends Transform {
             }
 
             // Shorten buffer if extra space (text or early buffer termination)
-            if (token.data) {
-                if (token.data.length > (token.length || 0)) {
-                    token.data = token.data.slice(0, token.length);
+            const buf = token.data;
+            if (buf) {
+                if (buf.length > (token.length || 0)) {
+                    token.data = buf.slice(0, token.length);
                 }
 
                 // The buffer is the right length now, so don't need length prop
@@ -126,11 +127,6 @@ export class Tokenize extends Transform {
     }
 
     _handleByte(c: number) {
-        // Warn about any 8-bit values not in BINARY section
-        if (this._mode !== Mode.BINARY && c >= 128) {
-            console.warn('8-bit value found: ' + c);
-        }
-
         switch (this._mode) {
             // If eating binary data, do it!
             case Mode.BINARY: {

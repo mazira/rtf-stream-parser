@@ -426,7 +426,13 @@ export class DeEncapsulate extends Transform {
             const buf = Buffer.concat(this._bufferedOutput);
 
             try {
-                const str = this._options.decode(buf, 'cp' + this._bufferedCpg);
+                let str: string;
+                // Ascii && UTF-8
+                if (this._bufferedCpg === 20127 || this._bufferedCpg === 65001) {
+                    str = buf.toString('utf8');
+                } else {
+                    str = this._options.decode(buf, 'cp' + this._bufferedCpg);
+                }
                 this.push(str);
             } catch (err) {
                 this._options.warn(`Unable to decode codepage ${this._bufferedCpg}`);
