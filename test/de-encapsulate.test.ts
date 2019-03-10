@@ -1,32 +1,32 @@
-// Node
-import * as fs from 'fs';
-import * as iconvLite from 'iconv-lite';
-
-// NPM
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
+import * as fs from 'fs';
+import * as iconvLite from 'iconv-lite';
+import { Readable } from 'stream';
+import { DeEncapsulate, Options } from '../src/de-encapsulate';
+import { streamFlow } from '../src/stream-flow';
+import { Tokenize } from '../src/tokenize';
+import { isStr } from '../src/utils';
+
 chai.use(chaiAsPromised);
 const expect = chai.expect;
 
-// Module
-import { Tokenize } from '../src/tokenize';
-import { DeEncapsulate, Options } from '../src/de-encapsulate';
-import { streamFlow } from '../src/stream-flow';
-
-// Test
-import { Readable } from 'stream';
-
 describe('DeEncapsulate', () => {
     async function process(inputs: (string | Buffer) | (string | Buffer)[], options?: Options) {
+        const decodings: Set<string> = new Set();
         const encodings: Set<string> = new Set();
         const warnings: string[] = [];
 
         inputs = Array.isArray(inputs) ? inputs : [inputs];
 
         const options2: Options = {
-            decode: (str, enc) => {
+            decode: (buf, enc) => {
+                decodings.add(enc);
+                return iconvLite.decode(buf, enc)
+            },
+            encode: (str, enc) => {
                 encodings.add(enc);
-                return iconvLite.decode(str, enc)
+                return iconvLite.encode(str, enc)
             },
             warn: str => warnings.push(str),
             ...options
@@ -34,10 +34,12 @@ describe('DeEncapsulate', () => {
 
         const streamIn = new Readable();
         streamIn._read = () => { };
-        const p = streamFlow(
+
+        const deEncapsulate = new DeEncapsulate(options2);
+        const p = streamFlow<Buffer | string>(
             streamIn,
             new Tokenize(),
-            new DeEncapsulate(options2)
+            deEncapsulate
         );
 
         // Do in a timeout just to simulate more async-ness
@@ -50,9 +52,16 @@ describe('DeEncapsulate', () => {
 
         const results = await p;
         return {
-            text: results.join(''),
+            results: results,
+            asText: results.map(r => isStr(r) ? r : r.toString('utf8')).join(''),
+            asBuffer: Buffer.concat(results.map(r => isStr(r) ? Buffer.from(r, 'utf8') : r)),
             warnings: warnings,
-            encodings: [...encodings]
+            decodings: [...decodings],
+            encodings: [...encodings],
+            isHtml: deEncapsulate.isHtml,
+            isText: deEncapsulate.isText,
+            htmlCharset: deEncapsulate.originalHtmlCharset,
+            defaultCodepage: deEncapsulate.defaultCodepage,
         };
     };
 
@@ -75,28 +84,28 @@ describe('DeEncapsulate', () => {
         });
 
         it('should throw an error if \\fromhtml1 not in first 10 tokens (and in HTML-only mode)', async () => {
-            await expect(process('{\\rtf1}'))
+            await expect(process('{\\rtf1}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
 
-            await expect(process('{\\rtf1\\bin10 \\fromhtml1}'))
+            await expect(process('{\\rtf1\\bin10 \\fromhtml1}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
 
-            await expect(process('{\\rtf1\\t3}'))
+            await expect(process('{\\rtf1\\t3}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
 
-            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\t10\\fromhtml1}'))
+            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\t10\\fromhtml1}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
 
-            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtm\\t10}'))
+            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\fromhtm\\t10}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
 
-            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9}'))
+            await expect(process('{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');
         });
 
         it('should throw an error if any tokens besides "{" or control words are within first 10', async () => {
             await expect(process('{\\rtf1\\t3\\t4 some text\\fromhtml1'))
-                .to.be.rejectedWith('Not encapsulated HTML file');
+                .to.be.rejectedWith('Not encapsulated HTML or text file');
         });
 
         it('should not throw an error if \\fromhtml1 in first 10 tokens', async () => {
@@ -114,20 +123,20 @@ describe('DeEncapsulate', () => {
         it('should ignore any content after closing bracket', async () => {
             const input = '{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1 hello}hello';
             const result = await process(input);
-            expect(result.text).to.eql('hello');
+            expect(result.asText).to.eql('hello');
         });
     });
 
     describe('html text output', () => {
         describe('with Unicode escapes', () => {
-            it('should properly decode characters (with default Node-native decoder)', async () => {
+            it('should properly return characters (without using the default Node-native decoder)', async () => {
                 const input = '{\\rtf1\\ansi\\fromhtml1\\uc0{{{{{{\\u104\\u105\\u8226}}}}}}}';
                 const result = await process(input, { decode: undefined });
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal([]);
+                expect(result.decodings).to.deep.equal([]);
 
-                expect(result.text).to.eql('hi•');
+                expect(result.asText).to.eql('hi•');
             });
 
             it('should handle cp20127 (us-ascii) without the decoder', async () => {
@@ -135,9 +144,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql(`hello`);
+                expect(result.asText).to.eql(`hello`);
             });
 
             it('should handle cp65001 (UTF-8) without the decoder', async () => {
@@ -145,9 +154,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀`);
+                expect(result.asText).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀`);
             });
 
             it('should properly decode characters (with iconv-lite)', async () => {
@@ -155,9 +164,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•');
+                expect(result.asText).to.eql('hi•');
             });
 
             it('should prefix output string with "html:" if desired', async () => {
@@ -165,9 +174,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input, { mode: 'either', prefix: true });
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('html:hi•');
+                expect(result.asText).to.eql('html:hi•');
             });
 
             it('should skip 1 character after by default', async () => {
@@ -175,9 +184,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•ello');
+                expect(result.asText).to.eql('hi•ello');
             });
 
             it('should not count following space as character to skip', async () => {
@@ -185,9 +194,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•ello');
+                expect(result.asText).to.eql('hi•ello');
             });
 
             it('should skip based on current \\uc value', async () => {
@@ -195,9 +204,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•lo');
+                expect(result.asText).to.eql('hi•lo');
             });
 
             it('should reset \\uc value when leaving group', async () => {
@@ -205,9 +214,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•ello');
+                expect(result.asText).to.eql('hi•ello');
             });
 
             it('should skip whole and partial string tokens', async () => {
@@ -215,9 +224,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•lo');
+                expect(result.asText).to.eql('hi•lo');
             });
 
             it('should count control words, control symbols, and binary as 1 skippable', async () => {
@@ -225,9 +234,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•lo');
+                expect(result.asText).to.eql('hi•lo');
             });
 
             it('should stop skipping when encountering { or }', async () => {
@@ -235,9 +244,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•lo');
+                expect(result.asText).to.eql('hi•lo');
             });
 
             it('should properly handle negative Unicode values', async () => {
@@ -245,9 +254,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi' + String.fromCodePoint(0xF020));
+                expect(result.asText).to.eql('hi' + String.fromCodePoint(0xF020));
             });
         });
 
@@ -257,9 +266,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(rtf);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('<sometag{/>');
+                expect(result.asText).to.eql('<sometag{/>');
             });
 
             it('should handle control word Unicode escapes', async () => {
@@ -267,9 +276,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(rtf);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('‘hi•');
+                expect(result.asText).to.eql('‘hi•');
             });
 
             it('should ignore other control words', async () => {
@@ -280,9 +289,9 @@ describe('DeEncapsulate', () => {
                     'htmlrtf control word inside htmltag',
                     'htmlrtf control word inside htmltag',
                 ]);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('<sometag/>');
+                expect(result.asText).to.eql('<sometag/>');
             });
 
             it('should interpret hex escapes in specified default code page', async () => {
@@ -291,9 +300,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1253']);
+                expect(result.decodings).to.deep.equal(['cp1253']);
 
-                expect(result.text).to.eql('π');
+                expect(result.asText).to.eql('π');
             });
 
             it('should interpret hex escapes in Windows-1252 codepage if no default given', async () => {
@@ -301,9 +310,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('•');
+                expect(result.asText).to.eql('•');
             });
 
             it("should interpret any 8-bit values in default code page (shouldn't happen)", async () => {
@@ -311,9 +320,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hi•');
+                expect(result.asText).to.eql('hi•');
             });
 
             it("should ignore control words inside content html", async () => {
@@ -323,9 +332,9 @@ describe('DeEncapsulate', () => {
                 expect(result.warnings).to.deep.equal([
                     'htmlrtf control word inside htmltag'
                 ]);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('hihi');
+                expect(result.asText).to.eql('hihi');
             });
 
             // Form https://github.com/mazira/rtf-stream-parser/issues/1
@@ -339,9 +348,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('<a href="mailto:address@emailhost.net">address@emailhost.net</a>');
+                expect(result.asText).to.eql('<a href="mailto:address@emailhost.net">address@emailhost.net</a>');
             });
         });
 
@@ -351,9 +360,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('text}');
+                expect(result.asText).to.eql('text}');
             });
 
             it('should handle control word Unicode escapes', async () => {
@@ -361,9 +370,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('text‘•');
+                expect(result.asText).to.eql('text‘•');
             });
 
             it("should interpret hex escapes in current font's codepage", async () => {
@@ -373,9 +382,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1253']);
+                expect(result.decodings).to.deep.equal(['cp1253']);
 
-                expect(result.text).to.eql('π');
+                expect(result.asText).to.eql('π');
             });
 
             it('should use default font if no current font', async () => {
@@ -385,9 +394,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1253']);
+                expect(result.decodings).to.deep.equal(['cp1253']);
 
-                expect(result.text).to.eql('π');
+                expect(result.asText).to.eql('π');
             });
 
             it('should allow \\cpg to override \\fcharset', async () => {
@@ -397,9 +406,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1253']);
+                expect(result.decodings).to.deep.equal(['cp1253']);
 
-                expect(result.text).to.eql('π');
+                expect(result.asText).to.eql('π');
             });
 
             it('should ignore text inside htmlrtf ignores', async () => {
@@ -407,9 +416,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql('');
+                expect(result.asText).to.eql('');
             });
 
             it('should track htmlrtf state in groups', async () => {
@@ -417,9 +426,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql('');
+                expect(result.asText).to.eql('');
             });
 
             it('should track \\f changes inside htmlrtf ignores', async () => {
@@ -427,9 +436,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1253']);
+                expect(result.decodings).to.deep.equal(['cp1253']);
 
-                expect(result.text).to.eql('π');
+                expect(result.asText).to.eql('π');
             });
 
             it('should buffer multiple text runs to decode at once', async () => {
@@ -437,9 +446,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp936']);
+                expect(result.decodings).to.deep.equal(['cp936']);
 
-                expect(result.text).to.eql('テュ');
+                expect(result.asText).to.eql('テュ');
             });
 
             it('should ignore text from \\pntext group', async () => {
@@ -456,9 +465,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.deep.equal(['cp1252']);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.text).to.eql('<li>Item 1<o:p></o:p></li>');
+                expect(result.asText).to.eql('<li>Item 1<o:p></o:p></li>');
             });
 
             it('should ignore formatConverter destination', async () => {
@@ -471,9 +480,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql('');
+                expect(result.asText).to.eql('');
             });
 
             it('should ignore any optional destinations (even unknown ones)', async () => {
@@ -485,9 +494,9 @@ describe('DeEncapsulate', () => {
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
-                expect(result.encodings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
 
-                expect(result.text).to.eql('');
+                expect(result.asText).to.eql('');
             });
         });
     });
@@ -504,36 +513,36 @@ describe('DeEncapsulate', () => {
             const result = await process(input, { mode: 'text' });
 
             expect(result.warnings).to.be.an('array').of.length(0);
-            expect(result.encodings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.be.an('array').of.length(0);
 
-            expect(result.text).to.eql('😀');
+            expect(result.asText).to.eql('😀');
         });
 
         it('should properly de-encapsulate in "text" mode', async () => {
             const result = await process(input, { mode: 'text' });
 
             expect(result.warnings).to.be.an('array').of.length(0);
-            expect(result.encodings).to.deep.equal(['cp1252']);
+            expect(result.decodings).to.deep.equal(['cp1252']);
 
-            expect(result.text).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
+            expect(result.asText).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
 
         it('should properly de-encapsulate in "either" mode', async () => {
             const result = await process(input, { mode: 'either' });
 
             expect(result.warnings).to.be.an('array').of.length(0);
-            expect(result.encodings).to.deep.equal(['cp1252']);
+            expect(result.decodings).to.deep.equal(['cp1252']);
 
-            expect(result.text).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
+            expect(result.asText).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
 
         it('should properly prefix with "text:" if requested', async () => {
             const result = await process(input, { mode: 'either', prefix: true });
 
             expect(result.warnings).to.be.an('array').of.length(0);
-            expect(result.encodings).to.deep.equal(['cp1252']);
+            expect(result.decodings).to.deep.equal(['cp1252']);
 
-            expect(result.text).to.eql(`text:Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
+            expect(result.asText).to.eql(`text:Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
 
         it('should handle \\par and \\line both as CRLF', async () => {
@@ -541,9 +550,114 @@ describe('DeEncapsulate', () => {
             const result = await process(input, { mode: 'text' });
 
             expect(result.warnings).to.be.an('array').of.length(0);
-            expect(result.encodings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.be.an('array').of.length(0);
 
-            expect(result.text).to.eql('\r\n\r\n\t');
+            expect(result.asText).to.eql('\r\n\r\n\t');
+        });
+    });
+
+    describe('symbolic fonts', async () => {
+        it('should treat symbolic font characters as literal Unicode codepoints by default', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\f0\\fswiss\\fcharset2 Wingdings;}{\\f1\\fswiss\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\u-10179\\u-8704}}`;
+
+            const result = await process(input);
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`\u0080\u0080😀\r\n€\u0080😀`);
+        });
+
+        it('should treat 0xF000-0xF0FF the same as 0x0000-0x00FF', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\f0\\fswiss\\fcharset2 Wingdings;}{\\f1\\fswiss\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\u-3968\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\u-3968\\u-10179\\u-8704}}`;
+
+            const result = await process(input);
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`\u0080\u0080\u0080😀\r\n€\u0080\uF080😀`);
+        });
+
+        it('should allow re-coding Wingdings to Unicode', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\f0\\fswiss\\fcharset2 Wingdings;}{\\f1\\fswiss\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\'4b\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\'4b\\u-10179\\u-8704}}`;
+
+            const result = await process(input, {
+                replaceSymbolFontChars: true
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`⓪⓪😐😀\r\n€\u0080K😀`);
+        });
+
+        it('should treat 0xF000-0xF0FF the same as 0x0000-0x00FF when re-coding', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\f0\\fswiss\\fcharset2 Wingdings;}{\\f1\\fswiss\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\u-3968\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\u-3968\\u-10179\\u-8704}}`;
+
+            const result = await process(input, {
+                replaceSymbolFontChars: true
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`⓪⓪⓪😀\r\n€\u0080\uF080😀`);
+        });
+    });
+
+    describe('additional options', async () => {
+        it('should allow output as UTF-8 Buffers', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\uc0\\deff0{\\fonttbl{\\f0\\cpg65001}}\\'e2\\'80\\'98hi\\u8217}`;
+            const result = await process(input, {
+                outputMode: 'buffer-utf8'
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.be.an('array').of.length(0);
+
+            expect(Buffer.isBuffer(result.results[0])).to.be.true;
+            expect(result.asBuffer.toString('utf8')).to.eql(`‘hi’`);
+        });
+
+        it('should allow output as default-encoded Buffers', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\uc0\\deff0{\\fonttbl{\\f0\\cpg65001}}\\'e2\\'80\\'98hi\\u8217}`;
+            const result = await process(input, {
+                outputMode: 'buffer-default-cpg'
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.be.an('array').of.length(0);
+            expect(result.encodings).to.deep.equal(['cp1252']);
+
+            expect(Buffer.isBuffer(result.results[0])).to.be.true;
+            // Check for cp1252 bytes
+            expect(result.asBuffer[0]).that.equal(0x91);
+            expect(result.asBuffer[3]).that.equal(0x92);
+        });
+
+        it('should natively handle cpg1200 re-coding', async () => {
+            const input = await fs.promises.readFile('test/examples/cpg1200.rtf');
+            const result = await process(input, {
+                outputMode: 'buffer-default-cpg'
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(1);
+            expect(result.decodings).to.be.an('array').of.length(2);
+
+            expect(result.asBuffer.toString('utf16le')).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
     });
 

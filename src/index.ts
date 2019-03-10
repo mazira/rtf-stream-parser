@@ -1,11 +1,11 @@
-import { Tokenize, Token } from './tokenize';
 import { DeEncapsulate, Options } from './de-encapsulate';
-import { isDef } from './utils';
 import { streamFlow } from './stream-flow';
+import { Token, Tokenize } from './tokenize';
+import { isDef } from './utils';
 
 export { Tokenize, DeEncapsulate };
 
-export function deEncapsulateSync(rtf: Buffer | string, options?: Pick<Options, 'decode' | 'warn'>) {
+export function deEncapsulateSync(rtf: Buffer | string, options?: Options) {
     const onError = (err?: any) => {
         if (isDef(err)) {
             throw err;
@@ -13,11 +13,7 @@ export function deEncapsulateSync(rtf: Buffer | string, options?: Pick<Options, 
     };
 
     const stream1 = new Tokenize();
-    const stream2 = new DeEncapsulate({
-        ...options,
-        mode: 'either',
-        prefix: true
-    });
+    const stream2 = new DeEncapsulate(options);
 
     // Hijack the push methods
     stream1.push = (token: Token) => {
@@ -25,46 +21,43 @@ export function deEncapsulateSync(rtf: Buffer | string, options?: Pick<Options, 
         return true;
     };
 
-    const strs: string[] = [];
-    stream2.push = (piece: string) => {
-        strs.push(piece);
+    const chunks: (string | Buffer)[] = [];
+    stream2.push = (piece: string | Buffer) => {
+        chunks.push(piece);
         return true;
     };
 
     // Pump the data
-    stream1._transform(rtf, '', onError);
+    stream1._transform(rtf, undefined, onError);
     stream1._flush(onError);
     stream2._flush(onError);
 
-    const str = strs.join('');
-    if (!str.startsWith('html:') && !str.startsWith('text:')) {
-        throw new Error('Expected "html:" or "text:" prefix');
-    }
+    const result = !options || !options.outputMode || options.outputMode === 'string'
+        ? (chunks as string[]).join('')
+        : Buffer.concat(chunks as Buffer[]);
 
     return {
-        mode: str.startsWith('html:') ? 'html' : 'text',
-        text: str.substr(5)
+        mode: stream2.isHtml ? 'html' : 'text',
+        text: result
     };
 }
 
-export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Pick<Options, 'decode' | 'warn'>) {
-    const strs = await streamFlow<string>(
+export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Options) {
+    const stream1 = new Tokenize();
+    const stream2 = new DeEncapsulate(options);
+
+    const chunks = await streamFlow<string | Buffer>(
         streamIn,
-        new Tokenize(),
-        new DeEncapsulate({
-            ...options,
-            mode: 'either',
-            prefix: true
-        })
+        stream1,
+        stream2
     );
 
-    const str = strs.join('');
-    if (!str.startsWith('html:') && !str.startsWith('text:')) {
-        throw new Error('Expected "html:" or "text:" prefix');
-    }
+    const result = !options || !options.outputMode || options.outputMode === 'string'
+        ? (chunks as string[]).join('')
+        : Buffer.concat(chunks as Buffer[]);
 
     return {
-        mode: str.startsWith('html:') ? 'html' : 'text',
-        text: str.substr(5)
+        mode: stream2.isHtml ? 'html' : 'text',
+        text: result
     };
 }

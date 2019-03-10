@@ -1,7 +1,4 @@
-// Node
 import { Transform } from 'stream';
-
-// Module
 import { isNum, isStr } from './utils';
 
 export const enum Mode {

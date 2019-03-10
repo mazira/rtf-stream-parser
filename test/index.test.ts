@@ -1,16 +1,12 @@
-// Node
-import * as fs from 'fs';
-import * as iconvLite from 'iconv-lite';
-
-// NPM
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
+import * as fs from 'fs';
+import * as iconvLite from 'iconv-lite';
+import { Options } from '../src/de-encapsulate';
+import * as index from '../src/index';
+
 chai.use(chaiAsPromised);
 const expect = chai.expect;
-
-// Module
-import * as index from '../src/index';
-import { Options } from '../src/de-encapsulate';
 
 // Test
 const example1Html = fs.readFileSync('test/examples/encapsulated.html', 'utf8');
