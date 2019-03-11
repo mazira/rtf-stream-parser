@@ -41,7 +41,6 @@ export interface NeededOptions {
         [font: string]: boolean
     };
     // Probaly one of  'Apple Color Emoji', 'Segoe UI Emoji','Segoe UI Symbol', 'Android Emoji', 'Noto Color Emoji', 'Emoji One', 'Twemoji' 
-    htmlReplacementFont: string;
     htmlEncodeNonAscii: boolean;
     htmlFixContentType: boolean;
     mode: Mode;
@@ -59,7 +58,6 @@ const defaultOptions: NeededOptions = {
     replaceSymbolFontChars: false,
     htmlEncodeNonAscii: false,
     // Probaly one of  'Apple Color Emoji', 'Segoe UI Emoji','Segoe UI Symbol', 'Android Emoji', 'Noto Color Emoji', 'Emoji One', 'Twemoji' 
-    htmlReplacementFont: 'emoji',
     htmlFixContentType: false,
     mode: 'either',
     prefix: false,
@@ -213,12 +211,14 @@ const handlers: { [key: string]: Handler } = {
 
     'ALL': function (token, count) {
         // First token should be {
-        if (count === 1 && token.type !== TokenType.GROUP_START)
+        if (count === 1 && token.type !== TokenType.GROUP_START) {
             throw new Error('File should start with "{"');
+        }
 
         // Second token should be \rtf1
-        if (count === 2 && (token.word !== 'rtf' || token.param !== 1))
-            throw new Error('File should start with "{\\rtf"');
+        if (count === 2 && (token.word !== 'rtf' || (token.param !== 0 && token.param !== 1))) {
+            throw new Error('File should start with "{\\rtf[0,1]"');
+        }
 
         if (count > 10 && !this._fromhtml && !this._fromtext) {
             throw this._getModeError();
@@ -558,7 +558,7 @@ interface BufferedSymbolText extends BufferedBase {
 
 type BufferedOutput = BufferedUnicodeText | BufferedCodepageText | BufferedFontText | BufferedSymbolText;
 
-const rxCharset = /(<meta\s[^>]*\bcharset=)([\w-]+)(\b[^>]*>)/i;
+const rxCharset = /(\bcharset=)([\w-]+)(")/i;
 
 export class DeEncapsulate extends Transform {
 
@@ -785,26 +785,28 @@ export class DeEncapsulate extends Transform {
             if (!f || !fontEntry) {
                 throw new Error('font text with no current font');
             }
-            if (fontEntry.fontname) {
-                throw new Error('font already has a fontname');
-            }
 
             // Has trailing semicolon
             if (!isStr(data)) {
-                for (const c of data) {
-                    if (c > 0x7F) {
-                        throw new Error('Non-ascii fontname!');
-                    }
-                }
+                data = data.toString('latin1');
             }
 
-            let str = isStr(data) ? data : data.toString('ascii');
+            // It's hard to know the proper encoding at this point, so replace any non-ASCII chars
+            // with string escapes
+            data = data.replace(/[^\x00-\x7F]/g, c => {
+                const hex = c.charCodeAt(0).toString(16).toUpperCase();
+                return '\\u' + '0000'.slice(0, 4 - hex.length) + hex;
+            });
+
+            let str = (fontEntry.fontname || '') + data;
+
             if (str.endsWith(';')) {
                 str = str.substr(0, str.length - 1);
-            }
-            // Trim quotes
-            if (str.length > 2 && str.startsWith('"') && str.endsWith('"')) {
-                str = str.substr(1, str.length - 2);
+
+                // Trim quotes
+                if (str.length > 2 && str.startsWith('"') && str.endsWith('"')) {
+                    str = str.substr(1, str.length - 2);
+                }
             }
 
             fontEntry.fontname = str;

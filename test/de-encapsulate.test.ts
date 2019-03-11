@@ -66,7 +66,7 @@ describe('DeEncapsulate', () => {
     };
 
     describe('detection', () => {
-        it(`should throw an error if input doesn't start with "{\\rtf1"`, async () => {
+        it(`should throw an error if input doesn't start with "{\\rtf[0,1]"`, async () => {
             await expect(process(''))
                 .to.be.rejectedWith('File should start with');
 
@@ -81,6 +81,28 @@ describe('DeEncapsulate', () => {
 
             await expect(process('{\\rtf2\\WoRd}'))
                 .to.be.rejectedWith('File should start with');
+        });
+
+        it('should allow body "{\\rtf0" and "{\\rtf1" starts', async () => {
+            {
+                const input = '{\\rtf0\\ansi\\fromhtml1\\uc0{{{{{{hi}}}}}}}';
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.deep.equal(['cp1252']);
+
+                expect(result.asText).to.eql('hi');
+            }
+
+            {
+                const input = '{\\rtf1\\ansi\\fromhtml1\\uc0{{{{{{hi}}}}}}}';
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.deep.equal(['cp1252']);
+
+                expect(result.asText).to.eql('hi');
+            }
         });
 
         it('should throw an error if \\fromhtml1 not in first 10 tokens (and in HTML-only mode)', async () => {
@@ -604,6 +626,22 @@ describe('DeEncapsulate', () => {
         it('should treat 0xF000-0xF0FF the same as 0x0000-0x00FF when re-coding', async () => {
             const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
                 + `{\\f0\\fswiss\\fcharset2 Wingdings;}{\\f1\\fswiss\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\u-3968\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\u-3968\\u-10179\\u-8704}}`;
+
+            const result = await process(input, {
+                replaceSymbolFontChars: true
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`⓪⓪⓪😀\r\n€\u0080\uF080😀`);
+        });
+
+        it('should allow text escapes and non-ASCII in font names', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\f0\\fswiss\\fcharset2 \\'57ing\\u100ings;}{\\f1\\fswiss\\fcharset0 Times \\'D1ew Roman \\u-10179\\u-8704;}}`
                 + `{\\f0\\'80\\u128\\u-3968\\u-10179\\u-8704}\\par`
                 + `{\\f1\\'80\\u128\\u-3968\\u-10179\\u-8704}}`;
 
