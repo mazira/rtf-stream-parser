@@ -282,14 +282,14 @@ export class Tokenize extends Transform {
 
     _transform(chunk: Buffer | string, encoding: string | undefined, cb: (err?: any) => void) {
         try {
-            const buf = isStr(chunk) ? Buffer.from(chunk, encoding) : chunk;
+            const buf = isStr(chunk) ? Buffer.from(chunk, encoding as BufferEncoding) : chunk;
             for (let i = 0; i < buf.length; i++) {
                 const c = buf[i];
                 this._handleByte(c);
             }
         } catch (err) {
             return cb(err);
-        }
+        } 
 
         cb();
     }

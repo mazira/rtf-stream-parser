@@ -49,7 +49,7 @@ export interface NeededOptions {
 }
 
 const defaultStringDecoder: StringDecoder = (buf, enc) => buf.toString(enc);
-const defaultStringEncoder: StringEncoder = (str, enc) => Buffer.from(str, enc);
+const defaultStringEncoder: StringEncoder = (str, enc) => Buffer.from(str, enc as BufferEncoding);
 
 const defaultOptions: NeededOptions = {
     decode: defaultStringDecoder,

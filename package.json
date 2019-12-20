@@ -1,11 +1,11 @@
 {
   "name": "rtf-stream-parser",
-  "version": "3.0.0",
+  "version": "3.0.1",
   "description": "Stream Transform class to tokenize RTF, and another to de-encapsulate text or HTML",
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
-    "test": "mocha --reporter spec dist/test"
+    "test": "tsc && mocha --reporter spec dist/test"
   },
   "repository": {
     "type": "git",
@@ -32,15 +32,15 @@
   },
   "homepage": "https://github.com/mazira/rtf-stream-parser#readme",
   "devDependencies": {
-    "@types/chai": "4.1.7",
-    "@types/chai-as-promised": "7.1.0",
-    "@types/mocha": "5.2.6",
-    "@types/node": "10.5.2",
-    "chai": "4.1.2",
+    "@types/chai": "4.2.7",
+    "@types/chai-as-promised": "7.1.2",
+    "@types/mocha": "5.2.7",
+    "@types/node": "12.12.21",
+    "chai": "4.2.0",
     "chai-as-promised": "7.1.1",
-    "iconv-lite": "0.4.24",
-    "mocha": "6.0.2",
-    "typescript": "3.2.4"
+    "iconv-lite": "0.5.0",
+    "mocha": "6.2.2",
+    "typescript": "3.7.3"
   },
   "dependencies": {},
   "files": [
