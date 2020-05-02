@@ -433,6 +433,18 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('π');
             });
 
+            it('should not warn when fcharset is set to codepage 20127 (technically incorrect, shoudl be charset)', async () => {
+                // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
+                // Use "deff0" instead of "f0"
+                const input = "{\\rtf1\\ansi\\fromhtml1\\deff0{\\fonttbl{\\f0\\fcharset20127}}\\'41}";
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.deep.equal([]);
+
+                expect(result.asText).to.eql('A');
+            });
+
             it('should ignore text inside htmlrtf ignores', async () => {
                 const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf hello\\htmlrtf0}";
                 const result = await process(input);

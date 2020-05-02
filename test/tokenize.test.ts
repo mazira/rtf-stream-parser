@@ -1,14 +1,8 @@
-// Node
-import { Readable } from 'stream';
-
-// NPM
 import { expect } from 'chai';
-
-// Module
-import { Tokenize, TokenType } from '../src/tokenize';
+import { Readable } from 'stream';
 import { streamFlow } from '../src/stream-flow';
+import { Tokenize, TokenType } from '../src/tokenize';
 
-// Test
 describe('Tokenize', () => {
     async function process(inputs: string[]) {
         const streamIn = new Readable();
@@ -119,7 +113,7 @@ describe('Tokenize', () => {
         expect(result[3]).to.eql({ type: TokenType.GROUP_END });
     });
 
-    it("should handle \\' hex excape", async () => {
+    it("should handle \\' hex escape", async () => {
         const result = await process(["\\'a0\\'FF"]);
         expect(result).to.be.an('array').of.length(2);
 
@@ -127,7 +121,7 @@ describe('Tokenize', () => {
         expect(result[1]).to.eql({ type: TokenType.CONTROL, word: "'", data: Buffer.from([255]) });
     });
 
-    it("should handle \\' hex excape early termination", async () => {
+    it("should handle \\' hex escape early termination", async () => {
         const result = await process(["\\'F"]);
         expect(result).to.be.an('array').of.length(1);
         expect(result[0]).to.eql({ type: TokenType.CONTROL, word: "'", data: Buffer.alloc(0) });

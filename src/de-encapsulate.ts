@@ -125,7 +125,10 @@ const charsetToCpg: { [charset: number]: number } = {
     222: 874,
     238: 1250,
     254: 437,
-    255: 850
+    255: 850,
+
+    // Found in the wild
+    20127: 20127,
 };
 
 const knownSymbolFontNames: { [name: string]: true } = {
