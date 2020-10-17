@@ -22,10 +22,12 @@ export type StringDecoder = (buf: Buffer, enc: string) => string;
 export type StringEncoder = (str: string, enc: string) => Buffer;
 export type LowLevelDecoder = (buf: Buffer, codepage: number, fontInfo: Readonly<FontTableEntry> | undefined, decoder: StringDecoder) => string | undefined;
 
+type DestinationSet = Partial<{ [dest: string]: true }>;
 
 export interface State {
     uc: number;
     destination?: string;
+    allDestinations?: DestinationSet;
     ancDestIgnorable?: boolean;
     destIgnorable?: boolean;
     htmlrtf?: boolean;
@@ -207,6 +209,17 @@ const handleFontfamily: Handler = function (token: ControlToken) {
     fontEntry.fontfamily = token.word.slice(1);
 };
 
+function addDestination(state: State, destination: string) {
+    // Track the new destination
+    if (!state.allDestinations) {
+        state.allDestinations = {};
+        state.allDestinations[destination] = true;
+    } else if (!state.allDestinations[destination]) {
+        state.allDestinations = Object.create(state.allDestinations) as DestinationSet;
+        state.allDestinations[destination] = true;
+    }
+}
+
 const handlers: { [key: string]: Handler } = {
     ///////////////////////////////////////////////////////////////////////////
     // Handlers for specific types of tokens
@@ -243,7 +256,7 @@ const handlers: { [key: string]: Handler } = {
         } else {
             // Make new state based on current
             const oldState = this._state;
-            const newState = Object.create(oldState);
+            const newState: State = Object.create(oldState);
             newState.ancDestIgnorable = oldState.ancDestIgnorable || oldState.destIgnorable;
             this._state = newState;
         }
@@ -311,11 +324,15 @@ const handlers: { [key: string]: Handler } = {
             // Handles htmltag destination
             this._state.destination = token.word;
             this._state.destIgnorable = false;
+
+            addDestination(this._state, token.word!);
         } else if (this._lastToken && this._lastLastToken
             && this._lastToken.type === TokenType.CONTROL && this._lastToken.word === '*'
             && this._lastLastToken.type === TokenType.GROUP_START) {
             this._state.destination = token.word;
             this._state.destIgnorable = true;
+
+            addDestination(this._state, token.word!);
         } else {
             this._options.warn('Got destination control word but not immediately after "{" or "{\\*": ' + token.word);
         }
@@ -329,6 +346,8 @@ const handlers: { [key: string]: Handler } = {
             && this._lastLastToken.type === TokenType.GROUP_START) {
             this._state.destination = token.word;
             this._state.destIgnorable = true;
+
+            addDestination(this._state, token.word!);
         }
     },
 
@@ -747,35 +766,12 @@ export class DeEncapsulate extends Transform {
         }
     }
 
-    _getDestStack() {
-        let stack = [];
-        let ignorable = false;
-
-        let state = this._state;
-        while (state && state !== Object.prototype) {
-            if (state.destination) {
-                stack.unshift(state.destination);
-                if (state.destIgnorable) {
-                    ignorable = true;
-                }
-            }
-
-            state = Object.getPrototypeOf(state);
-        }
-
-        return {
-            stack: stack,
-            ignorable: ignorable
-        };
-    }
-
     _getCurrentFont() {
         const state = this._state;
         // Get current font's cpg, or default
         const f = state.font || this._deff;
         const finfo = this._fonttbl && this._fonttbl[f];
         return finfo;
-
     }
 
     // Outputs Unicode text if in the proper state
@@ -816,9 +812,10 @@ export class DeEncapsulate extends Transform {
             return;
         }
 
-        const { stack, ignorable } = this._getDestStack();
+        const allDests = this._state.allDestinations || {};
+        const ignorable = this._state.destIgnorable || this._state.ancDestIgnorable;
 
-        const insideHtmltag = stack.indexOf('htmltag') >= 0;
+        const insideHtmltag = !!allDests['htmltag'];
 
         // Outside of htmltag, ignore anything in htmlrtf group
         if (!insideHtmltag && this._state.htmlrtf) {
@@ -831,7 +828,7 @@ export class DeEncapsulate extends Transform {
         }
 
         // Outside of htmltag, ignore anything in known non-output groups
-        if (!insideHtmltag && (stack.indexOf('fonttbl') >= 0 || stack.indexOf('colortbl') >= 0 || stack.indexOf('pntext') >= 0)) {
+        if (!insideHtmltag && (allDests['fonttbl'] || allDests['colortbl'] || allDests['pntext'])) {
             return;
         }
 

@@ -533,6 +533,21 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('');
             });
         });
+
+        it('should handle deeply nested HTML in reasonable time', async () => {
+            const input = [
+                `{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7`,
+                `{\\*\\htmltag <font color="#0000ff">}\\htmlrtf {\\htmlrtf0`.repeat(1000),
+                `hi`,
+                `{\\*\\htmltag </font>}\\htmlrtf }\\htmlrtf0`.repeat(1000),
+                `}`];
+            const result = await process(input);
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.include('hi');
+        }).timeout(1000);
     });
 
     describe('from text', () => {
