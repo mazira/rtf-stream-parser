@@ -128,10 +128,17 @@ const charsetToCpg: { [charset: number]: number } = {
     238: 1250,
     254: 437,
     255: 850,
-
-    // Found in the wild
-    20127: 20127,
 };
+
+// Make reverse map of codepages
+const codpages: { [charset: number]: true } = {
+    // Seen in the wild
+    20127: true
+};
+for (const charset in charsetToCpg) {
+    const cpg = charsetToCpg[charset];
+    codpages[cpg] = true;
+}
 
 const knownSymbolFontNames: { [name: string]: true } = {
     'Wingdings': true,
@@ -458,7 +465,14 @@ const handlers: { [key: string]: Handler } = {
         }
 
         if (token.param !== 1) {
-            const cpg = charsetToCpg[token.param];
+            let cpg = charsetToCpg[token.param];
+
+            // Somtimes, the \fcharset control word seems to specify a cpg directly...
+            // This seems incorrect, but has been found in the wild for 1252 and 20127
+            if (!isNum(cpg) && codpages[token.param]) {
+                cpg = token.param;
+            }
+
             if (!isNum(cpg)) {
                 this._options.warn('No codepage for charset ' + token.param);
             } else {
@@ -532,13 +546,9 @@ const handlers: { [key: string]: Handler } = {
     },
 
     '__htmlrtf': function (token) {
-        // Outside htmltag, surpression tags
-        if (this._state.destination !== 'htmltag') {
-            const on = token.param !== 0;
-            this._state.htmlrtf = on;
-        } else {
-            this._options.warn('htmlrtf control word inside htmltag');
-        }
+        // Outside or inside htmltag, surpression tags
+        const on = token.param !== 0;
+        this._state.htmlrtf = on;
     }
 };
 
@@ -812,15 +822,16 @@ export class DeEncapsulate extends Transform {
             return;
         }
 
+        // Outside or inside of htmltag, ignore anything in htmlrtf group
+        if (this._state.htmlrtf) {
+            return;
+        }
+
         const allDests = this._state.allDestinations || {};
-        const ignorable = this._state.destIgnorable || this._state.ancDestIgnorable;
 
         const insideHtmltag = !!allDests['htmltag'];
 
-        // Outside of htmltag, ignore anything in htmlrtf group
-        if (!insideHtmltag && this._state.htmlrtf) {
-            return;
-        }
+        const ignorable = this._state.destIgnorable || this._state.ancDestIgnorable;
 
         // Outside of htmltag, ignore anything in ignorable group
         if (!insideHtmltag && ignorable) {

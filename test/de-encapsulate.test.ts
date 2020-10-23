@@ -303,17 +303,15 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('‘hi•');
             });
 
-            it('should ignore other control words', async () => {
-                const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7{\\*\\htmltag\\htmlrtf <sometag/>\\htmlrtf0}}';
+            it('should still suppress content with htmlrtf (spec is unclear about this... but this example seen in the wild)', async () => {
+                const rtf = '{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7'
+                    + '{\\*\\htmltag241 <!--[if gte mso 15]>&nbsp;\\htmlrtf .\\u32  \\htmlrtf0<![endif]-->}}';
                 const result = await process(rtf);
 
-                expect(result.warnings).to.deep.equal([
-                    'htmlrtf control word inside htmltag',
-                    'htmlrtf control word inside htmltag',
-                ]);
+                expect(result.warnings).to.deep.equal([]);
                 expect(result.decodings).to.deep.equal(['cp1252']);
 
-                expect(result.asText).to.eql('<sometag/>');
+                expect(result.asText).to.eql('<!--[if gte mso 15]>&nbsp;<![endif]-->');
             });
 
             it('should interpret hex escapes in specified default code page', async () => {
@@ -347,24 +345,13 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('hi•');
             });
 
-            it("should ignore control words inside content html", async () => {
-                const input = '{\\rtf1\\ansi\\fromhtml1\\t5\\t6\\t7{\\*\\htmltag {\\htmlrtf hi}}hi}';
-                const result = await process(input);
-
-                expect(result.warnings).to.deep.equal([
-                    'htmlrtf control word inside htmltag'
-                ]);
-                expect(result.decodings).to.deep.equal(['cp1252']);
-
-                expect(result.asText).to.eql('hihi');
-            });
-
             // Form https://github.com/mazira/rtf-stream-parser/issues/1
             it('should extract href inner text properly', async () => {
                 const input = [
                     `{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\t6\\t7`,
                     `{\\*\\htmltag84 <a href="mailto:address@emailhost.net">}`,
-                    `\\htmlrtf {\\field{\\*\\fldinst{HYPERLINK "mailto:address@emailhost.net"}}{\\fldrslt\\cf1\\ul \\htmlrtf0 address@emailhost.net\\htmlrtf }\\htmlrtf0 \\htmlrtf }\\htmlrtf0`,
+                    `\\htmlrtf {\\field{\\*\\fldinst{HYPERLINK "mailto:address@emailhost.net"}}`,
+                    `{\\fldrslt\\cf1\\ul \\htmlrtf0 address@emailhost.net\\htmlrtf }\\htmlrtf0 \\htmlrtf }\\htmlrtf0`,
                     `{\\*\\htmltag92 </a>}`,
                     `}`];
                 const result = await process(input);
@@ -433,14 +420,22 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('π');
             });
 
-            it('should not warn when fcharset is set to codepage 20127 (technically incorrect, shoudl be charset)', async () => {
-                // Lowercase pi is 0xF0 (240) in Windows-1253, but 0x03C0 in Unicode
-                // Use "deff0" instead of "f0"
+            it('should not warn when fcharset is set to codepage 20127 (technically incorrect but seen in wild)', async () => {
                 const input = "{\\rtf1\\ansi\\fromhtml1\\deff0{\\fonttbl{\\f0\\fcharset20127}}\\'41}";
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
                 expect(result.decodings).to.deep.equal([]);
+
+                expect(result.asText).to.eql('A');
+            });
+
+            it('should not warn when fcharset is set to codepage 1252 (technically incorrect but seen in wild)', async () => {
+                const input = "{\\rtf1\\ansi\\fromhtml1\\deff0{\\fonttbl{\\f0\\fcharset1252}}\\'41}";
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.deep.equal(['cp1252']);
 
                 expect(result.asText).to.eql('A');
             });
