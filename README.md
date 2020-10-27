@@ -1,5 +1,7 @@
 # rtf-stream-parser
-This module is primarily used to extract RTF-encapsulated text and HTML. This module exposes high-level functions where you may pass in an RTF string, Buffer, or stream, and get out the de-encapsulated content. Additionally, this module contains two lower level stream Transform classes that handle the tokenization and de-encapsulation processs and may be used for other low-level operations.
+This module is primarily used to extract RTF-encapsulated text and HTML, which is a common message body format used in Outlook / Exchange / MAPI email messages and the related file formats (.msg, .pst, .ost, .olm). The RTF-encapsulated formats are described in [[MS-OXRTFEX]](https://docs.microsoft.com/en-us/openspecs/exchange_server_protocols/ms-oxrtfex/411d0d58-49f7-496c-b8c3-5859b045f6cf).
+
+This module exposes high-level functions where you may pass in an RTF string, Buffer, or stream, and get out the de-encapsulated content. Additionally, this module contains two lower level stream Transform classes that handle the tokenization and de-encapsulation processs and may be used for other low-level operations.
 
 This code is used in production at [GoldFynch](https://goldfynch.com), an e-discovery platform, for extracting HTML and text email bodies that have passed through Outlook mail systems.
 
