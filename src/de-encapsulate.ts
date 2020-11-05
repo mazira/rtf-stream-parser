@@ -1,22 +1,13 @@
 import { Transform } from 'stream';
 import { recodeSymbolFontText } from './decode';
+import { fontCWHandlers, fontTextHandler } from './features/font';
+import { FontGlobals, FontState, FontTable, FontTableEntry } from './features/font.types';
 import { ControlToken, GroupEndToken, GroupStartToken, TextToken, Token, TokenType } from './tokenize';
 import { isNum, isStr } from './utils';
 import { words, WordType } from './words';
 
 export type Mode = 'text' | 'html' | 'either';
 
-export interface FontTableEntry {
-    cpg?: number;
-    fcharsetCpg?: number;
-    themefont?: string;
-    fontfamily?: string;
-    fontname?: string;
-}
-
-export interface FontTable {
-    [font: string]: FontTableEntry | undefined;
-}
 
 export type StringDecoder = (buf: Buffer, enc: string) => string;
 export type StringEncoder = (str: string, enc: string) => Buffer;
@@ -24,14 +15,13 @@ export type LowLevelDecoder = (buf: Buffer, codepage: number, fontInfo: Readonly
 
 type DestinationSet = Partial<{ [dest: string]: true }>;
 
-export interface State {
+export interface State extends FontState {
     uc: number;
     destination?: string;
     allDestinations?: DestinationSet;
     ancDestIgnorable?: boolean;
     destIgnorable?: boolean;
     htmlrtf?: boolean;
-    font?: string;
 }
 
 
@@ -97,48 +87,6 @@ const escapes: { [word: string]: string } = {
     '_': '\u00AD'
 };
 
-const charsetToCpg: { [charset: number]: number } = {
-    0: 1252,
-    2: 42,
-    77: 10000,
-    78: 10001,
-    79: 10003,
-    80: 10008,
-    81: 10002,
-    83: 10005,
-    84: 10004,
-    85: 10006,
-    86: 10081,
-    87: 10021,
-    88: 10029,
-    89: 10007,
-    128: 932,
-    129: 949,
-    130: 1361,
-    134: 936,
-    136: 950,
-    161: 1253,
-    162: 1254,
-    163: 1258,
-    177: 1255,
-    178: 1256,
-    186: 1257,
-    204: 1251,
-    222: 874,
-    238: 1250,
-    254: 437,
-    255: 850,
-};
-
-// Make reverse map of codepages
-const codpages: { [charset: number]: true } = {
-    // Seen in the wild
-    20127: true
-};
-for (const charset in charsetToCpg) {
-    const cpg = charsetToCpg[charset];
-    codpages[cpg] = true;
-}
 
 const knownSymbolFontNames: { [name: string]: true } = {
     'Wingdings': true,
@@ -188,35 +136,9 @@ function htmlEntityEncode(str: string) {
 
 type Handler = (this: DeEncapsulate, token: Token, count: number) => void;
 
-const handleThemefont: Handler = function (token: ControlToken) {
-    if (this._state.destination !== 'fonttbl' || !this._fonttbl) {
-        throw new Error(token + ' not in fonttbl');
-    }
-
-    const f = this._state.font;
-    const fontEntry = f && this._fonttbl[f];
-    if (!f || !fontEntry) {
-        throw new Error(token + ' with no current font');
-    }
-
-    fontEntry.themefont = token.word.slice(1);
-};
-
-const handleFontfamily: Handler = function (token: ControlToken) {
-    if (this._state.destination !== 'fonttbl' || !this._fonttbl) {
-        throw new Error(token + ' not in fonttbl');
-    }
-
-    const f = this._state.font;
-    const fontEntry = f && this._fonttbl[f];
-    if (!f || !fontEntry) {
-        throw new Error(token + ' with no current font');
-    }
-
-    fontEntry.fontfamily = token.word.slice(1);
-};
-
 function addDestination(state: State, destination: string) {
+    ++state.destDepth;
+
     // Track the new destination
     if (!state.allDestinations) {
         state.allDestinations = {};
@@ -232,7 +154,7 @@ const handlers: { [key: string]: Handler } = {
     // Handlers for specific types of tokens
     ///////////////////////////////////////////////////////////////////////////
 
-    'ALL': function (token, count) {
+    __ALL: function (token, count) {
         // First token should be {
         if (count === 1 && token.type !== TokenType.GROUP_START) {
             throw new Error('File should start with "{"');
@@ -254,22 +176,18 @@ const handlers: { [key: string]: Handler } = {
         }
     },
 
-    [TokenType.GROUP_START]: function (token: GroupStartToken) {
+    ['__' + TokenType.GROUP_START]: function (token: GroupStartToken) {
         this._skip = 0;
 
-        // Handle first state
-        if (!this._state) {
-            this._state = { uc: 1 };
-        } else {
-            // Make new state based on current
-            const oldState = this._state;
-            const newState: State = Object.create(oldState);
-            newState.ancDestIgnorable = oldState.ancDestIgnorable || oldState.destIgnorable;
-            this._state = newState;
-        }
+        // Make new state based on current
+        const oldState = this._state;
+        const newState: State = Object.create(oldState);
+        newState.ancDestIgnorable = oldState.ancDestIgnorable || oldState.destIgnorable;
+        ++newState.groupDepth;
+        this._state = newState;
     },
 
-    [TokenType.GROUP_END]: function (token: GroupEndToken) {
+    ['__' + TokenType.GROUP_END]: function (token: GroupEndToken) {
         this._skip = 0;
         this._state = Object.getPrototypeOf(this._state);
         if (this._state === this._rootState) {
@@ -277,7 +195,7 @@ const handlers: { [key: string]: Handler } = {
         }
     },
 
-    [TokenType.CONTROL]: function (token: ControlToken) {
+    ['__' + TokenType.CONTROL]: function (token: ControlToken) {
         // Skip the control token if skipping after \u
         if (this._skip > 0) {
             this._skip--;
@@ -285,7 +203,7 @@ const handlers: { [key: string]: Handler } = {
         }
     },
 
-    [TokenType.TEXT]: function (token: TextToken, count) {
+    ['__' + TokenType.TEXT]: function (token: TextToken, count) {
         if (count <= 10) {
             throw this._getModeError();
         }
@@ -318,15 +236,6 @@ const handlers: { [key: string]: Handler } = {
     },
 
     ['_' + WordType.DESTINATION]: function (token) {
-        if (token.word === 'fonttbl') {
-            if (this._fonttbl) {
-                throw new Error('fonttbl already created');
-            } else if (this._state.destination !== 'rtf') {
-                throw new Error('fonttbl not in header');
-            }
-            this._fonttbl = {};
-        }
-
         if (this._lastToken && this._lastToken.type === TokenType.GROUP_START) {
             // Handles htmltag destination
             this._state.destination = token.word;
@@ -361,17 +270,17 @@ const handlers: { [key: string]: Handler } = {
     ///////////////////////////////////////////////////////////////////////////
     // Handlers for specific CONTROL words / symbols
     ///////////////////////////////////////////////////////////////////////////
-    '__mac': function (token) {
+    mac: function (token) {
         throw new Error('Unsupported character set \\mac');
     },
-    '__pc': function (token) {
+    pc: function (token) {
         throw new Error('Unsupported character set \\pc');
     },
-    '__pca': function (token) {
+    pca: function (token) {
         throw new Error('Unsupported character set \\pca');
     },
 
-    '__fromhtml': function (token) {
+    fromhtml: function (token) {
         if (this._state.destination !== 'rtf') {
             throw new Error('\\fromhtml not at root group');
         }
@@ -388,7 +297,7 @@ const handlers: { [key: string]: Handler } = {
         }
     },
 
-    '__fromtext': function (token) {
+    fromtext: function (token) {
         if (this._state.destination !== 'rtf') {
             throw new Error('\\fromtext not at root group');
         }
@@ -405,7 +314,7 @@ const handlers: { [key: string]: Handler } = {
         }
     },
 
-    '__ansicpg': function (token) {
+    ansicpg: function (token) {
         if (this._state.destination !== 'rtf') {
             throw new Error('\\ansicpg not at root group');
         }
@@ -420,7 +329,7 @@ const handlers: { [key: string]: Handler } = {
         this._cpg = token.param;
     },
 
-    '__deff': function (token) {
+    deff: function (token) {
         if (this._state.destination !== 'rtf')
             throw new Error('\\deff not at root group');
         if (typeof this._deff !== 'undefined')
@@ -429,109 +338,17 @@ const handlers: { [key: string]: Handler } = {
         this._deff = token.param + '';
     },
 
-    // Handle font selection & font table
-    '__f': function (token) {
-        if (typeof token.param === 'undefined') {
-            throw new Error('No param for \\f');
-        }
-
-        const f = token.param + '';
-
-        if (this._state.destination === 'fonttbl') {
-            // Create font table entry
-            this._fonttbl = this._fonttbl || {};
-            this._fonttbl[f] = this._fonttbl[f] || {};
-        } else if (!this._fonttbl || !this._fonttbl[f]) {
-            throw new Error('\\f control word for unknown font ' + f);
-        }
-
-        // Set current font
-        this._state.font = f;
-    },
-
-    '__fcharset': function (token) {
-        if (this._state.destination !== 'fonttbl' || !this._fonttbl) {
-            throw new Error('fcharset not in fonttbl');
-        }
-
-        const f = this._state.font;
-        const fontEntry = f && this._fonttbl[f];
-        if (!f || !fontEntry) {
-            throw new Error('fcharset with no current font');
-        }
-
-        if (!isNum(token.param)) {
-            throw new Error('fcharset with no param');
-        }
-
-        if (token.param !== 1) {
-            let cpg = charsetToCpg[token.param];
-
-            // Somtimes, the \fcharset control word seems to specify a cpg directly...
-            // This seems incorrect, but has been found in the wild for 1252 and 20127
-            if (!isNum(cpg) && codpages[token.param]) {
-                cpg = token.param;
-            }
-
-            if (!isNum(cpg)) {
-                this._options.warn('No codepage for charset ' + token.param);
-            } else {
-                fontEntry.fcharsetCpg = cpg;
-            }
-        }
-    },
-
-    '__cpg': function (token) {
-        if (this._state.destination !== 'fonttbl' || !this._fonttbl)
-            throw new Error('cpg not in fonttbl');
-
-        const f = this._state.font;
-        const fontEntry = f && this._fonttbl[f];
-        if (!f || !fontEntry) {
-            throw new Error('cpg with no current font');
-        }
-
-        const cpg = token.param;
-        if (!isNum(cpg)) {
-            this._options.warn('No codepage given');
-        } else {
-            fontEntry.cpg = cpg;
-        }
-    },
-
-    // \flomajor | \fhimajor | \fdbmajor | \fbimajor | \flominor | \fhiminor | \fdbminor | \fbiminor
-    '__flomajor': handleThemefont,
-    '__fhimajor': handleThemefont,
-    '__fdbmajor': handleThemefont,
-    '__fbimajor': handleThemefont,
-    '__flominor': handleThemefont,
-    '__fhiminor': handleThemefont,
-    '__fdbminor': handleThemefont,
-    '__fbiminor': handleThemefont,
-
-
-    // \fnil | \froman | \fswiss | \fmodern | \fscript | \fdecor | \ftech | \fbidi
-    '__fnil': handleFontfamily,
-    '__froman': handleFontfamily,
-    '__fswiss': handleFontfamily,
-    '__fmodern': handleFontfamily,
-    '__fscript': handleFontfamily,
-    '__fdecor': handleFontfamily,
-    '__ftech': handleFontfamily,
-    '__fbidi': handleFontfamily,
-
-
     // Handle byte escapes
-    "__'": function (token) {
+    "'": function (token) {
         this._doText(token.data as Buffer);
     },
 
     // Handle Unicode escapes
-    '__uc': function (token) {
+    uc: function (token) {
         this._state.uc = token.param || 0;
     },
 
-    '__u': function (token) {
+    u: function (token) {
         if (!isNum(token.param)) {
             throw new Error('Unicode control word with no param');
         }
@@ -545,7 +362,7 @@ const handlers: { [key: string]: Handler } = {
         this._skip = this._state.uc;
     },
 
-    '__htmlrtf': function (token) {
+    htmlrtf: function (token) {
         // Outside or inside htmltag, surpression tags
         const on = token.param !== 0;
         this._state.htmlrtf = on;
@@ -592,12 +409,12 @@ type BufferedOutput = BufferedUnicodeText | BufferedCodepageText | BufferedFontT
 
 const rxCharset = /(\bcharset=)([\w-]+)(")/i;
 
-export class DeEncapsulate extends Transform {
+export class DeEncapsulate extends Transform implements FontGlobals {
 
     public _options: NeededOptions;
 
     // These members are all public to allow the handler functions to access without TS complaining...
-    public readonly _rootState: State = { uc: 1 };
+    public readonly _rootState: State = { uc: 1, groupDepth: 0, destDepth: 0 };
     public _state: State = this._rootState;
 
     public _cpg = 1252;
@@ -682,7 +499,7 @@ export class DeEncapsulate extends Transform {
                 }
                 const str1 = chunks.join('');
 
-                const fontname = bufd.font.fontname;
+                const fontname = bufd.font.fontName;
                 if (fontname
                     && (this._options.replaceSymbolFontChars === true
                         || (this._options.replaceSymbolFontChars && this._options.replaceSymbolFontChars[fontname]))
@@ -787,38 +604,8 @@ export class DeEncapsulate extends Transform {
     // Outputs Unicode text if in the proper state
     _doText(data: Buffer | string) {
         // Handle font names
-        if (this._state.destination === 'fonttbl') {
-            const f = this._state.font;
-            const fontEntry = f && this._fonttbl && this._fonttbl[f];
-
-            if (!f || !fontEntry) {
-                throw new Error('font text with no current font');
-            }
-
-            // Has trailing semicolon
-            if (!isStr(data)) {
-                data = data.toString('latin1');
-            }
-
-            // It's hard to know the proper encoding at this point, so replace any non-ASCII chars
-            // with string escapes
-            data = data.replace(/[^\x00-\x7F]/g, c => {
-                const hex = c.charCodeAt(0).toString(16).toUpperCase();
-                return '\\u' + '0000'.slice(0, 4 - hex.length) + hex;
-            });
-
-            let str = (fontEntry.fontname || '') + data;
-
-            if (str.endsWith(';')) {
-                str = str.substr(0, str.length - 1);
-
-                // Trim quotes
-                if (str.length > 2 && str.startsWith('"') && str.endsWith('"')) {
-                    str = str.substr(1, str.length - 2);
-                }
-            }
-
-            fontEntry.fontname = str;
+        const handled = fontTextHandler(this, this._state, data);
+        if (handled) {
             return;
         }
 
@@ -850,7 +637,7 @@ export class DeEncapsulate extends Transform {
         if (thisFont && (
             thisFont.fcharsetCpg === 42
             || thisFont.cpg === 42
-            || (thisFont.fontname && knownSymbolFontNames[thisFont.fontname]))
+            || (thisFont.fontName && knownSymbolFontNames[thisFont.fontName]))
         ) {
             // Handle a new symbol-font-based output piece
             if (bufd && bufd.type === BufferedType.Symbol && bufd.inHtmlTag === insideHtmltag && bufd.font === thisFont) {
@@ -917,11 +704,11 @@ export class DeEncapsulate extends Transform {
     _handleToken(token: Token) {
         this._count++;
 
-        const fnames = ['ALL', token.type];
+        const fnames = ['__ALL', '__' + token.type];
         if (token.type === TokenType.CONTROL) {
             const wordType = words[token.word] || WordType.UNKNOWN;
             fnames.push('_' + wordType);
-            fnames.push('__' + token.word);
+            fnames.push(token.word);
         }
 
         try {
@@ -930,6 +717,13 @@ export class DeEncapsulate extends Transform {
                     const done = handlers[fname].call(this, token, this._count);
                     if (done)
                         break;
+                }
+            }
+
+            // Handle new style feature plugins
+            if (token.type === TokenType.CONTROL) {
+                if (fontCWHandlers[token.word]) {
+                    fontCWHandlers[token.word](this, this._state, token, this._count, this._options.warn);
                 }
             }
         } catch (err) {
