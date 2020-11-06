@@ -1,4 +1,4 @@
-export function isDef<T>(thing: T | undefined): thing is T {
+export function isDef<T>(thing: T | undefined | void): thing is T {
     return typeof thing !== 'undefined';
 }
 

@@ -1,6 +1,6 @@
 import { isNum, isStr } from '../utils';
-import { FontGlobals, FontState } from './font.types';
-import { CWHandler, CWHandlers, TextHandler } from './types';
+import { FontGlobalState } from './fontFeatureHandler.types';
+import { ControlHandler, ControlHandlers, FeatureHandler, TextHandler } from './types';
 
 const charsetToCpg: { [charset: number]: number } = {
     0: 1252,
@@ -45,12 +45,12 @@ for (const charset in charsetToCpg) {
     codpages[cpg] = true;
 }
 
-const handleThemeFont: CWHandler<FontGlobals, FontState> = (global, state, cw) => {
-    if (state.destination !== 'fonttbl' || !global._fonttbl) {
+const handleThemeFont: ControlHandler<FontGlobalState> = (global, cw) => {
+    if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
         throw new Error(cw + ' not in fonttbl');
     }
 
-    const f = state.font;
+    const f = global._state.font;
     const fontEntry = f && global._fonttbl[f];
     if (!f || !fontEntry) {
         throw new Error(cw + ' with no current font');
@@ -59,12 +59,12 @@ const handleThemeFont: CWHandler<FontGlobals, FontState> = (global, state, cw) =
     fontEntry.themeFont = cw.word.slice(1);
 };
 
-const handleFontFamily: CWHandler<FontGlobals, FontState> = (global, state, cw) => {
-    if (state.destination !== 'fonttbl' || !global._fonttbl) {
+const handleFontFamily: ControlHandler<FontGlobalState> = (global, cw) => {
+    if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
         throw new Error(cw + ' not in fonttbl');
     }
 
-    const f = state.font;
+    const f = global._state.font;
     const fontEntry = f && global._fonttbl[f];
     if (!f || !fontEntry) {
         throw new Error(cw + ' with no current font');
@@ -73,25 +73,25 @@ const handleFontFamily: CWHandler<FontGlobals, FontState> = (global, state, cw) 
     fontEntry.fontFamily = cw.word.slice(1);
 };
 
-export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
-    fonttbl: (global, state, cw) => {
+const fontControlHandlers: ControlHandlers<FontGlobalState> = {
+    fonttbl: (global, cw) => {
         if (global._fonttbl) {
             throw new Error('fonttbl already created');
-        } else if (state.destDepth !== 2) {
+        } else if (global._state.destDepth !== 2) {
             throw new Error('fonttbl not in header');
         }
         global._fonttbl = {}
     },
 
     // Handle font definition (inside \fonttbl) or font selection (outside \fonttlb)
-    f: (global, state, cw) => {
+    f: (global, cw) => {
         if (typeof cw.param === 'undefined') {
             throw new Error('No param for \\f');
         }
 
         const f = cw.param + '';
 
-        if (state.destination === 'fonttbl') {
+        if (global._state.destination === 'fonttbl') {
             // Create font table entry
             global._fonttbl = global._fonttbl || {};
             global._fonttbl[f] = global._fonttbl[f] || {};
@@ -100,16 +100,16 @@ export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
         }
 
         // Set current font
-        state.font = f;
+        global._state.font = f;
     },
 
     // Handle fcharset inside \fonttbl
-    fcharset: (global, state, cw, count, warn) => {
-        if (state.destination !== 'fonttbl' || !global._fonttbl) {
+    fcharset: (global, cw) => {
+        if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
             throw new Error('fcharset not in fonttbl');
         }
 
-        const f = state.font;
+        const f = global._state.font;
         const fontEntry = f && global._fonttbl[f];
         if (!f || !fontEntry) {
             throw new Error('fcharset with no current font');
@@ -129,7 +129,7 @@ export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
             }
 
             if (!isNum(cpg)) {
-                warn('No codepage for charset ' + cw.param);
+                global._options.warn('No codepage for charset ' + cw.param);
             } else {
                 fontEntry.fcharsetCpg = cpg;
             }
@@ -137,11 +137,11 @@ export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
     },
 
     // Handle cpg inside \fonttbl
-    cpg: (global, state, cw, count, warn) => {
-        if (state.destination !== 'fonttbl' || !global._fonttbl)
+    cpg: (global, cw) => {
+        if (global._state.destination !== 'fonttbl' || !global._fonttbl)
             throw new Error('cpg not in fonttbl');
 
-        const f = state.font;
+        const f = global._state.font;
         const fontEntry = f && global._fonttbl[f];
         if (!f || !fontEntry) {
             throw new Error('cpg with no current font');
@@ -149,7 +149,7 @@ export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
 
         const cpg = cw.param;
         if (!isNum(cpg)) {
-            warn('No codepage given');
+            global._options.warn('No codepage given');
         } else {
             fontEntry.cpg = cpg;
         }
@@ -176,9 +176,9 @@ export const fontCWHandlers: CWHandlers<FontGlobals, FontState> = {
     fbidi: handleFontFamily,
 }
 
-export const fontTextHandler: TextHandler<FontGlobals, FontState> = (global, state, data) => {
-    if (state.destination === 'fonttbl') {
-        const f = state.font;
+const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
+    if (global._state.destination === 'fonttbl') {
+        const f = global._state.font;
         const fontEntry = f && global._fonttbl && global._fonttbl[f];
 
         if (!f || !fontEntry) {
@@ -213,4 +213,9 @@ export const fontTextHandler: TextHandler<FontGlobals, FontState> = (global, sta
     }
 
     return false;
+}
+
+export const fontFeatureHandler: FeatureHandler<FontGlobalState> = {
+    controlHandlers: fontControlHandlers,
+    textHandler: fontTextHandler
 }

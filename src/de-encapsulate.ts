@@ -1,10 +1,18 @@
 import { Transform } from 'stream';
 import { recodeSymbolFontText } from './decode';
-import { fontCWHandlers, fontTextHandler } from './features/font';
-import { FontGlobals, FontState, FontTable, FontTableEntry } from './features/font.types';
-import { ControlToken, GroupEndToken, GroupStartToken, TextToken, Token, TokenType } from './tokenize';
-import { isNum, isStr } from './utils';
-import { words, WordType } from './words';
+import { checkVersion } from './features/checkVersion';
+import { countTokens } from './features/countTokens';
+import { fontFeatureHandler } from './features/fontFeatureHandler';
+import { FontGlobalState, FontGroupState, FontTable, FontTableEntry } from './features/fontFeatureHandler.types';
+import { handleControlsAndDestinations } from './features/handleControlsAndDestinations';
+import { ControlAndDestinationGlobalState, ControlAndDestinationGroupState } from './features/handleControlsAndDestinations.types';
+import { handleDeEncapsulation } from './features/handleDeEncapsulation';
+import { handleGroupState } from './features/handleGroupState';
+import { GlobalStateWithGroupState, GroupGlobalState, GroupState } from './features/handleGroupState.types';
+import { handleUnicode } from './features/handleUnicode';
+import { UnicodeGlobalState, UnicodeGroupState } from './features/handleUnicode.types';
+import { Token, TokenType } from './tokenize';
+import { isDef, isNum, isStr } from './utils';
 
 export type Mode = 'text' | 'html' | 'either';
 
@@ -13,17 +21,14 @@ export type StringDecoder = (buf: Buffer, enc: string) => string;
 export type StringEncoder = (str: string, enc: string) => Buffer;
 export type LowLevelDecoder = (buf: Buffer, codepage: number, fontInfo: Readonly<FontTableEntry> | undefined, decoder: StringDecoder) => string | undefined;
 
-type DestinationSet = Partial<{ [dest: string]: true }>;
-
-export interface State extends FontState {
-    uc: number;
-    destination?: string;
-    allDestinations?: DestinationSet;
-    ancDestIgnorable?: boolean;
-    destIgnorable?: boolean;
+interface MyGroupState extends GroupState, UnicodeGroupState, ControlAndDestinationGroupState, FontGroupState {
     htmlrtf?: boolean;
 }
 
+interface MyTransform extends GroupGlobalState, UnicodeGlobalState, ControlAndDestinationGlobalState, FontGlobalState, GlobalStateWithGroupState<MyGroupState> {
+    _state: MyGroupState;
+    _rootState: MyGroupState;
+}
 
 export interface NeededOptions {
     decode: StringDecoder;
@@ -67,25 +72,6 @@ const handledFonts: { [font: string]: boolean } = {
     'Symbol': true
 };
 */
-
-
-const escapes: { [word: string]: string } = {
-    'par': '\r\n',
-    'line': '\r\n',
-    'tab': '\t',
-    '{': '{',
-    '}': '}',
-    '\\': '\\',
-    'lquote': '\u2018',
-    'rquote': '\u2019',
-    'ldblquote': '\u201C',
-    'rdblquote': '\u201D',
-    'bullet': '\u2022',
-    'endash': '\u2013',
-    'emdash': '\u2014',
-    '~': '\u00A0',
-    '_': '\u00AD'
-};
 
 
 const knownSymbolFontNames: { [name: string]: true } = {
@@ -136,136 +122,11 @@ function htmlEntityEncode(str: string) {
 
 type Handler = (this: DeEncapsulate, token: Token, count: number) => void;
 
-function addDestination(state: State, destination: string) {
-    ++state.destDepth;
-
-    // Track the new destination
-    if (!state.allDestinations) {
-        state.allDestinations = {};
-        state.allDestinations[destination] = true;
-    } else if (!state.allDestinations[destination]) {
-        state.allDestinations = Object.create(state.allDestinations) as DestinationSet;
-        state.allDestinations[destination] = true;
-    }
-}
-
 const handlers: { [key: string]: Handler } = {
     ///////////////////////////////////////////////////////////////////////////
     // Handlers for specific types of tokens
     ///////////////////////////////////////////////////////////////////////////
 
-    __ALL: function (token, count) {
-        // First token should be {
-        if (count === 1 && token.type !== TokenType.GROUP_START) {
-            throw new Error('File should start with "{"');
-        }
-
-        // Second token should be \rtf1
-        if (count === 2 && (token.word !== 'rtf' || (token.param !== 0 && token.param !== 1))) {
-            throw new Error('File should start with "{\\rtf[0,1]"');
-        }
-
-        if (count > 10 && !this._fromhtml && !this._fromtext) {
-            throw this._getModeError();
-        }
-
-        // Warn and skip if we have any tokens after final }
-        if (this._done) {
-            this._options.warn('Additional tokens after final closing bracket');
-            return true;
-        }
-    },
-
-    ['__' + TokenType.GROUP_START]: function (token: GroupStartToken) {
-        this._skip = 0;
-
-        // Make new state based on current
-        const oldState = this._state;
-        const newState: State = Object.create(oldState);
-        newState.ancDestIgnorable = oldState.ancDestIgnorable || oldState.destIgnorable;
-        ++newState.groupDepth;
-        this._state = newState;
-    },
-
-    ['__' + TokenType.GROUP_END]: function (token: GroupEndToken) {
-        this._skip = 0;
-        this._state = Object.getPrototypeOf(this._state);
-        if (this._state === this._rootState) {
-            this._done = true;
-        }
-    },
-
-    ['__' + TokenType.CONTROL]: function (token: ControlToken) {
-        // Skip the control token if skipping after \u
-        if (this._skip > 0) {
-            this._skip--;
-            return true;
-        }
-    },
-
-    ['__' + TokenType.TEXT]: function (token: TextToken, count) {
-        if (count <= 10) {
-            throw this._getModeError();
-        }
-
-        // Check if we should be skipping the whole text...
-        if (this._skip >= token.data.length) {
-            this._skip -= token.data.length;
-            return true;
-        }
-
-        // We are skipping some, slice the data!
-        if (this._skip > 0) {
-            token.data = token.data.slice(this._skip);
-            this._skip = 0;
-        }
-
-        this._doText(token.data);
-    },
-
-    ///////////////////////////////////////////////////////////////////////////
-    // Handlers based on type of CONTROL token (symbol vs destination)
-    ///////////////////////////////////////////////////////////////////////////
-
-    // Use this method to handle basic text escapes
-    ['_' + WordType.SYMBOL]: function (token) {
-        const text = escapes[token.word || ''];
-        if (text) {
-            this._doText(text);
-        }
-    },
-
-    ['_' + WordType.DESTINATION]: function (token) {
-        if (this._lastToken && this._lastToken.type === TokenType.GROUP_START) {
-            // Handles htmltag destination
-            this._state.destination = token.word;
-            this._state.destIgnorable = false;
-
-            addDestination(this._state, token.word!);
-        } else if (this._lastToken && this._lastLastToken
-            && this._lastToken.type === TokenType.CONTROL && this._lastToken.word === '*'
-            && this._lastLastToken.type === TokenType.GROUP_START) {
-            this._state.destination = token.word;
-            this._state.destIgnorable = true;
-
-            addDestination(this._state, token.word!);
-        } else {
-            this._options.warn('Got destination control word but not immediately after "{" or "{\\*": ' + token.word);
-        }
-    },
-
-    // For control words that are unknown... check if they appear to be
-    // optional destinations (because then will ignore any text)
-    ['_' + WordType.UNKNOWN]: function (token) {
-        if (this._lastToken && this._lastLastToken
-            && this._lastToken.type === TokenType.CONTROL && this._lastToken.word === '*'
-            && this._lastLastToken.type === TokenType.GROUP_START) {
-            this._state.destination = token.word;
-            this._state.destIgnorable = true;
-
-            addDestination(this._state, token.word!);
-        }
-    },
 
     ///////////////////////////////////////////////////////////////////////////
     // Handlers for specific CONTROL words / symbols
@@ -280,39 +141,7 @@ const handlers: { [key: string]: Handler } = {
         throw new Error('Unsupported character set \\pca');
     },
 
-    fromhtml: function (token) {
-        if (this._state.destination !== 'rtf') {
-            throw new Error('\\fromhtml not at root group');
-        }
-        if (this._fromhtml !== false || this._fromtext !== false) {
-            throw new Error('\\fromhtml or \\fromtext already defined');
-        }
-        if (this._options.mode !== 'html' && this._options.mode !== 'either') {
-            throw this._getModeError();
-        }
 
-        this._fromhtml = true;
-        if (this._options.prefix) {
-            this.push('html:');
-        }
-    },
-
-    fromtext: function (token) {
-        if (this._state.destination !== 'rtf') {
-            throw new Error('\\fromtext not at root group');
-        }
-        if (this._fromhtml !== false || this._fromtext !== false) {
-            throw new Error('\\fromhtml or \\fromtext already defined');
-        }
-        if (this._options.mode !== 'text' && this._options.mode !== 'either') {
-            throw this._getModeError();
-        }
-
-        this._fromtext = true;
-        if (this._options.prefix) {
-            this.push('text:');
-        }
-    },
 
     ansicpg: function (token) {
         if (this._state.destination !== 'rtf') {
@@ -341,25 +170,6 @@ const handlers: { [key: string]: Handler } = {
     // Handle byte escapes
     "'": function (token) {
         this._doText(token.data as Buffer);
-    },
-
-    // Handle Unicode escapes
-    uc: function (token) {
-        this._state.uc = token.param || 0;
-    },
-
-    u: function (token) {
-        if (!isNum(token.param)) {
-            throw new Error('Unicode control word with no param');
-        }
-
-        if (token.param < 0) {
-            this._doText(String.fromCodePoint(token.param + 0x10000));
-        } else {
-            this._doText(String.fromCodePoint(token.param));
-        }
-
-        this._skip = this._state.uc;
     },
 
     htmlrtf: function (token) {
@@ -409,18 +219,31 @@ type BufferedOutput = BufferedUnicodeText | BufferedCodepageText | BufferedFontT
 
 const rxCharset = /(\bcharset=)([\w-]+)(")/i;
 
-export class DeEncapsulate extends Transform implements FontGlobals {
 
+const featureHandlers = [
+    countTokens,
+    checkVersion,
+    handleGroupState,
+    handleUnicode,
+    handleControlsAndDestinations,
+    handleDeEncapsulation,
+    fontFeatureHandler,
+];
+
+export class DeEncapsulate extends Transform implements MyTransform {
     public _options: NeededOptions;
 
     // These members are all public to allow the handler functions to access without TS complaining...
-    public readonly _rootState: State = { uc: 1, groupDepth: 0, destDepth: 0 };
-    public _state: State = this._rootState;
+    public readonly _rootState: MyGroupState = { uc: 1, groupDepth: 0, destDepth: 0 };
+    public _state: MyGroupState = this._rootState;
 
     public _cpg = 1252;
     public _count = 0;
+
     public _lastLastToken: Token | null | undefined = null;
     public _lastToken: Token | null | undefined = null;
+    public _currToken: Token | null | undefined = null;
+
     public _fromhtml = false;
     public _fromtext = false;
     public _didHtmlCharsetReplace = false;
@@ -583,15 +406,6 @@ export class DeEncapsulate extends Transform implements FontGlobals {
         }
     }
 
-    _getModeError() {
-        if (this._options.mode === 'html') {
-            return new Error('Not encapsulated HTML file');
-        } else if (this._options.mode === 'text') {
-            return new Error('Not encapsulated text file');
-        } else {
-            return new Error('Not encapsulated HTML or text file');
-        }
-    }
 
     _getCurrentFont() {
         const state = this._state;
@@ -604,9 +418,13 @@ export class DeEncapsulate extends Transform implements FontGlobals {
     // Outputs Unicode text if in the proper state
     _doText(data: Buffer | string) {
         // Handle font names
-        const handled = fontTextHandler(this, this._state, data);
-        if (handled) {
-            return;
+        for (const feature of featureHandlers) {
+            if (feature.textHandler) {
+                const handled = feature.textHandler(this, data);
+                if (handled) {
+                    return;
+                }
+            }
         }
 
         // Outside or inside of htmltag, ignore anything in htmlrtf group
@@ -702,36 +520,67 @@ export class DeEncapsulate extends Transform implements FontGlobals {
     }
 
     _handleToken(token: Token) {
-        this._count++;
-
-        const fnames = ['__ALL', '__' + token.type];
-        if (token.type === TokenType.CONTROL) {
-            const wordType = words[token.word] || WordType.UNKNOWN;
-            fnames.push('_' + wordType);
-            fnames.push(token.word);
-        }
-
         try {
-            for (let fname of fnames) {
-                if (handlers[fname]) {
-                    const done = handlers[fname].call(this, token, this._count);
-                    if (done)
-                        break;
+            // Do all token functions
+            for (const feature of featureHandlers) {
+                if (feature.allTokenHandler) {
+                    const result = feature.allTokenHandler(this, token);
+                    if (isDef(result)) {
+                        if (result !== true) {
+                            this._doText(result);
+                        }
+                        return;
+                    }
                 }
             }
 
-            // Handle new style feature plugins
+            // Do token type functions
+            for (const feature of featureHandlers) {
+                if (feature.tokenHandlers) {
+                    const tokenHandler = feature.tokenHandlers[token.type];
+                    if (tokenHandler) {
+                        const result = tokenHandler(this, token as any);
+                        if (isDef(result)) {
+                            if (result !== true) {
+                                this._doText(result);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
             if (token.type === TokenType.CONTROL) {
-                if (fontCWHandlers[token.word]) {
-                    fontCWHandlers[token.word](this, this._state, token, this._count, this._options.warn);
+                // Do control token functions
+                for (const feature of featureHandlers) {
+                    if (feature.controlHandlers && feature.controlHandlers[token.word]) {
+                        const result = feature.controlHandlers[token.word](this, token);
+                        if (isDef(result)) {
+                            if (result !== true) {
+                                this._doText(result);
+                            }
+                            return;
+                        }
+                    }
+                }
+            }
+
+            const fnames = ['__ALL', '__' + token.type];
+            if (token.type === TokenType.CONTROL) {
+                fnames.push(token.word);
+            }
+
+            for (let fname of fnames) {
+                if (handlers[fname]) {
+                    const done = handlers[fname].call(this, token);
+                    if (done)
+                        break;
                 }
             }
         } catch (err) {
             return err;
         }
 
-        this._lastLastToken = this._lastToken;
-        this._lastToken = token;
     }
 
     _transform(token: Token, encoding: string | undefined, cb: (error?: any) => void) {
@@ -742,14 +591,14 @@ export class DeEncapsulate extends Transform implements FontGlobals {
     _flush(cb: (error?: any) => void) {
         let error;
 
-        if (this._count === 0) {
-            error = new Error('File should start with "{"');
-        } else if (this._count === 1) {
-            error = new Error('File should start with "{\\rtf"');
-        } else if (!this._fromhtml && !this._fromtext) {
-            error = this._getModeError();
-        } else if (this._state !== this._rootState) {
-            this._options.warn('Not enough matching closing brackets');
+        try {
+            for (const feature of featureHandlers) {
+                if (feature.preFlushHandler) {
+                    feature.preFlushHandler(this);
+                }
+            }
+        } catch (err) {
+            error = err;
         }
 
         this._flushBuffer();
