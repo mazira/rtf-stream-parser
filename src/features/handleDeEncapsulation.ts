@@ -29,7 +29,7 @@ const allTokenHandler: TokenHandler<DeEncapsulationGlobalState, Token> = (global
 
 
 const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState> = {
-    fromhtml: (global, token) => {
+    fromhtml: global => {
         if (global._state.destination !== 'rtf') {
             throw new Error('\\fromhtml not at root group');
         }
@@ -48,7 +48,7 @@ const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState
         }
     },
 
-    fromtext: (global, token) => {
+    fromtext: global => {
         if (global._state.destination !== 'rtf') {
             throw new Error('\\fromtext not at root group');
         }
@@ -66,12 +66,41 @@ const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState
             return true;
         }
     },
+
+    htmlrtf: (global, token) => {
+        // Outside or inside htmltag, surpression tags
+        const on = token.param !== 0;
+        global._state.htmlrtf = on;
+    }
 }
 
 export const handleDeEncapsulation: FeatureHandler<DeEncapsulationGlobalState> = {
     allTokenHandler: allTokenHandler,
     controlHandlers: deEncapsulationControlHandlers,
-    preFlushHandler: global => {
+    outputDataFilter: global => {
+        // Outside or inside of htmltag, ignore anything in htmlrtf group
+        if (global._state.htmlrtf) {
+            return true;
+        }
+
+        const allDests = global._state.allDestinations || {};
+
+        const insideHtmltag = !!allDests['htmltag'];
+
+        const ignorable = global._state.destIgnorable || global._state.ancDestIgnorable;
+
+        // Outside of htmltag, ignore anything in ignorable group
+        if (!insideHtmltag && ignorable) {
+            return true;
+        }
+
+        // Outside of htmltag, ignore anything in known non-output groups
+        if (!insideHtmltag && (allDests['fonttbl'] || allDests['colortbl'] || allDests['pntext'])) {
+            return true;
+        }
+    },
+
+    preStreamFlushHandler: global => {
         if (!global._fromhtml && !global._fromtext) {
             throw getModeError(global);
         }

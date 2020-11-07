@@ -2,7 +2,7 @@ import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
 import * as fs from 'fs';
 import * as iconvLite from 'iconv-lite';
-import { Options } from '../src/de-encapsulate';
+import { DeEncapsulateOptions } from '../src/de-encapsulate';
 import * as index from '../src/index';
 
 chai.use(chaiAsPromised);
@@ -12,7 +12,7 @@ const expect = chai.expect;
 const example1Html = fs.readFileSync('test/examples/encapsulated.html', 'utf8');
 const example2Text = fs.readFileSync('test/examples/jis-test.txt', 'utf8');
 
-const options: Options = {
+const options: Partial<DeEncapsulateOptions> = {
     decode: iconvLite.decode,
     warn: () => { }
 };

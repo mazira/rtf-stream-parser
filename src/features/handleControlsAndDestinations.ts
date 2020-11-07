@@ -49,6 +49,11 @@ const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalSta
         const wordType = words[token.word] || WordType.UNKNOWN;
 
         if (wordType === WordType.SYMBOL) {
+            // Handle byte escapes
+            if (token.word === "'") {
+                return token.data as Buffer;
+            }
+
             // Use this method to handle basic text escapes
             const text = escapes[token.word || ''];
             if (text) {

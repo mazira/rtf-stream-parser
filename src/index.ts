@@ -1,11 +1,11 @@
-import { DeEncapsulate, Options } from './de-encapsulate';
+import { DeEncapsulate, DeEncapsulateOptions } from './de-encapsulate';
 import { streamFlow } from './stream-flow';
 import { Token, Tokenize } from './tokenize';
 import { isDef } from './utils';
 
 export { Tokenize, DeEncapsulate };
 
-export function deEncapsulateSync(rtf: Buffer | string, options?: Options) {
+export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEncapsulateOptions>) {
     const onError = (err?: any) => {
         if (isDef(err)) {
             throw err;
@@ -42,7 +42,7 @@ export function deEncapsulateSync(rtf: Buffer | string, options?: Options) {
     };
 }
 
-export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Options) {
+export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Partial<DeEncapsulateOptions>) {
     const stream1 = new Tokenize();
     const stream2 = new DeEncapsulate(options);
 

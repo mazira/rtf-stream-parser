@@ -1,5 +1,5 @@
 import { isNum, isStr } from '../utils';
-import { FontGlobalState } from './fontFeatureHandler.types';
+import { FontGlobalState } from './handleFonts.types';
 import { ControlHandler, ControlHandlers, FeatureHandler, TextHandler } from './types';
 
 const charsetToCpg: { [charset: number]: number } = {
@@ -74,6 +74,17 @@ const handleFontFamily: ControlHandler<FontGlobalState> = (global, cw) => {
 };
 
 const fontControlHandlers: ControlHandlers<FontGlobalState> = {
+    // Set a default font, probably before font table
+    deff: (global, cw) => {
+        if (global._state.destination !== 'rtf')
+            throw new Error('\\deff not at root group');
+        if (typeof global._deff !== 'undefined')
+            throw new Error('\\deff already defined');
+
+        global._deff = cw.param + '';
+    },
+
+    // Handle initializing the font table
     fonttbl: (global, cw) => {
         if (global._fonttbl) {
             throw new Error('fonttbl already created');
@@ -211,11 +222,9 @@ const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
         fontEntry.fontName = str;
         return true;
     }
-
-    return false;
 }
 
-export const fontFeatureHandler: FeatureHandler<FontGlobalState> = {
+export const handleFonts: FeatureHandler<FontGlobalState> = {
     controlHandlers: fontControlHandlers,
-    textHandler: fontTextHandler
+    outputDataFilter: fontTextHandler
 }

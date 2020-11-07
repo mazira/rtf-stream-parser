@@ -31,7 +31,7 @@ const groupTokenHandlers: TokenHandlers<GroupGlobalState> = {
 export const handleGroupState: FeatureHandler<GroupGlobalState> = {
     allTokenHandler: allTokenhandler,
     tokenHandlers: groupTokenHandlers,
-    preFlushHandler: global => {
+    preStreamFlushHandler: global => {
         if (global._state !== global._rootState) {
             global._options.warn('Not enough matching closing brackets');
         }

@@ -13,14 +13,14 @@ export type TokenHandlers<G> = {
     [TokenType.TEXT]?: TokenHandler<G, TextToken>
 }
 
-export type TextHandler<G> = (global: G, data: Buffer | string) => boolean;
+export type TextHandler<G> = (global: G, data: Buffer | string) => true | undefined;
 
 export interface FeatureHandler<G> {
     allTokenHandler?: TokenHandler<G, Token>,
     tokenHandlers?: TokenHandlers<G>;
     controlHandlers?: ControlHandlers<G>;
-    textHandler?: TextHandler<G>;
-    preFlushHandler?: (global: G) => void
+    outputDataFilter?: TextHandler<G>;
+    preStreamFlushHandler?: (global: G) => void
 }
 
 export interface WarnOption {

@@ -1,8 +1,8 @@
 import { TokenType } from '../tokenize';
-import { GlobalTokenCountState } from './countTokens.types';
+import { TokenCountGlobalState } from './countTokens.types';
 import { FeatureHandler } from './types';
 
-export const checkVersion: FeatureHandler<GlobalTokenCountState> = {
+export const checkVersion: FeatureHandler<TokenCountGlobalState> = {
     allTokenHandler: (global, token) => {
         // First token should be {
         if (global._count === 1 && token.type !== TokenType.GROUP_START) {
@@ -14,7 +14,7 @@ export const checkVersion: FeatureHandler<GlobalTokenCountState> = {
             throw new Error('File should start with "{\\rtf[0,1]"');
         }
     },
-    preFlushHandler: global => {
+    preStreamFlushHandler: global => {
         if (global._count === 0) {
             throw new Error('File should start with "{"');
         } else if (global._count === 1) {

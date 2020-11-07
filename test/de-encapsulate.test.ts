@@ -3,7 +3,7 @@ import * as chaiAsPromised from 'chai-as-promised';
 import * as fs from 'fs';
 import * as iconvLite from 'iconv-lite';
 import { Readable } from 'stream';
-import { DeEncapsulate, Options } from '../src/de-encapsulate';
+import { DeEncapsulate, DeEncapsulateOptions } from '../src/de-encapsulate';
 import { streamFlow } from '../src/stream-flow';
 import { Tokenize } from '../src/tokenize';
 import { isStr } from '../src/utils';
@@ -12,14 +12,14 @@ chai.use(chaiAsPromised);
 const expect = chai.expect;
 
 describe('DeEncapsulate', () => {
-    async function process(inputs: (string | Buffer) | (string | Buffer)[], options?: Options) {
+    async function process(inputs: (string | Buffer) | (string | Buffer)[], options?: Partial<DeEncapsulateOptions>) {
         const decodings: Set<string> = new Set();
         const encodings: Set<string> = new Set();
         const warnings: string[] = [];
 
         inputs = Array.isArray(inputs) ? inputs : [inputs];
 
-        const options2: Options = {
+        const options2: Partial<DeEncapsulateOptions> = {
             decode: (buf, enc) => {
                 decodings.add(enc);
                 return iconvLite.decode(buf, enc)
@@ -722,7 +722,7 @@ describe('DeEncapsulate', () => {
     });
 
     it('should properly decapsulate the spec example', async () => {
-        const options: Options = {
+        const options: Partial<DeEncapsulateOptions> = {
             decode: iconvLite.decode,
             mode: 'html',
             warn: () => { }
@@ -735,7 +735,7 @@ describe('DeEncapsulate', () => {
     });
 
     it('should properly decapsulate the JIS example', async () => {
-        const options: Options = {
+        const options: Partial<DeEncapsulateOptions> = {
             decode: iconvLite.decode,
             mode: 'text',
             warn: () => { }
