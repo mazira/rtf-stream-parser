@@ -27,7 +27,8 @@ const escapes: { [word: string]: string } = {
 };
 
 function addDestination(state: ControlAndDestinationGroupState, destination: string) {
-    ++state.destDepth;
+    state.destDepth = (state.destDepth || 0) + 1;
+    state.destGroupDepth = state.groupDepth;
 
     // Track the new destination
     if (!state.allDestinations) {
@@ -40,11 +41,6 @@ function addDestination(state: ControlAndDestinationGroupState, destination: str
 }
 
 const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalState> = {
-    [TokenType.GROUP_START]: global => {
-        // The new state has just been made, ancDestIgnorable and destIgnorable should not yet
-        // bet set on this new state
-        global._state.ancDestIgnorable = global._state.ancDestIgnorable || global._state.destIgnorable;
-    },
     [TokenType.CONTROL]: (global, token) => {
         const wordType = words[token.word] || WordType.UNKNOWN;
 
@@ -62,14 +58,15 @@ const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalSta
         } else if (wordType === WordType.DESTINATION) {
             if (global._lastToken && global._lastToken.type === TokenType.GROUP_START) {
                 global._state.destination = token.word;
-                global._state.destIgnorable = false;
+                global._state.destIgnorableImmediate = false;
 
                 addDestination(global._state, token.word!);
             } else if (global._lastToken && global._lastLastToken
                 && global._lastToken.type === TokenType.CONTROL && global._lastToken.word === '*'
-                && global._lastLastToken.type === TokenType.GROUP_START) {
+                && global._lastLastToken.type === TokenType.GROUP_START
+            ) {
                 global._state.destination = token.word;
-                global._state.destIgnorable = true;
+                global._state.destIgnorableImmediate = global._state.destIgnorable = true;
 
                 addDestination(global._state, token.word!);
             } else {
@@ -80,9 +77,10 @@ const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalSta
             // optional destinations (because then we can ignore any text)
             if (global._lastToken && global._lastLastToken
                 && global._lastToken.type === TokenType.CONTROL && global._lastToken.word === '*'
-                && global._lastLastToken.type === TokenType.GROUP_START) {
+                && global._lastLastToken.type === TokenType.GROUP_START
+            ) {
                 global._state.destination = token.word;
-                global._state.destIgnorable = true;
+                global._state.destIgnorableImmediate = global._state.destIgnorable = true;
 
                 addDestination(global._state, token.word!);
             }

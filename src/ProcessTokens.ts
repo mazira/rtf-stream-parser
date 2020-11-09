@@ -1,42 +1,11 @@
 import { Transform } from 'stream';
 import { recodeSymbolFontText } from './decode';
-import { TokenCountGlobalState } from './features/countTokens.types';
 import { CharacterSetGlobalState } from './features/handleCharacterSet.types';
-import { ControlAndDestinationGlobalState, ControlAndDestinationGroupState } from './features/handleControlsAndDestinations.types';
-import { FontGlobalState, FontGroupState, FontTable, FontTableEntry } from './features/handleFonts.types';
-import { GlobalStateWithGroupState, GroupGlobalState, GroupState } from './features/handleGroupState.types';
-import { UnicodeGlobalState, UnicodeGroupState } from './features/handleUnicode.types';
+import { FontGlobalState, FontTable, FontTableEntry } from './features/handleFonts.types';
 import { FeatureHandler } from './features/types';
+import { BufferedOutput, ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions, StringDecoder, StringEncoder, TextType } from './ProcessTokens.types';
 import { Token, TokenType } from './tokenize';
 import { isDef, isStr } from './utils';
-
-export type StringDecoder = (buf: Buffer, enc: string) => string;
-export type StringEncoder = (str: string, enc: string) => Buffer;
-export type LowLevelDecoder = (buf: Buffer, codepage: number, fontInfo: Readonly<FontTableEntry> | undefined, decoder: StringDecoder) => string | undefined;
-
-export interface ProcessTokensOptions {
-    decode: StringDecoder;
-    encode: StringEncoder;
-    outputMode: 'string' | 'buffer-utf8' | 'buffer-default-cpg';
-    replaceSymbolFontChars: boolean | {
-        [font: string]: boolean
-    };
-    warn: (msg: string) => void;
-}
-
-export interface ProcessTokensGroupState extends GroupState, UnicodeGroupState, ControlAndDestinationGroupState, FontGroupState { }
-
-export interface ProcessTokensGlobalState extends
-    TokenCountGlobalState,
-    GroupGlobalState,
-    UnicodeGlobalState,
-    ControlAndDestinationGlobalState,
-    CharacterSetGlobalState,
-    FontGlobalState,
-    GlobalStateWithGroupState<ProcessTokensGroupState> {
-    _state: ProcessTokensGroupState;
-    _rootState: ProcessTokensGroupState;
-}
 
 const defaultStringDecoder: StringDecoder = (buf, enc) => buf.toString(enc);
 const defaultStringEncoder: StringEncoder = (str, enc) => Buffer.from(str, enc as BufferEncoding);
@@ -57,52 +26,13 @@ const knownSymbolFontNames: { [name: string]: true } = {
     'Symbol': true,
 }
 
-const enum TextType {
-    Unicode,
-    Codepage,
-    Font,
-    Symbol
-}
-
-interface BufferedBase {
-    type: TextType;
-    data: Buffer[] | string[] | (Buffer | string)[];
-    font?: Readonly<FontTableEntry>;
-    codepage?: number;
-}
-
-interface BufferedUnicodeText extends BufferedBase {
-    type: TextType.Unicode;
-    data: string[];
-}
-
-interface BufferedCodepageText extends BufferedBase {
-    type: TextType.Codepage;
-    data: Buffer[];
-    codepage: number;
-}
-
-interface BufferedFontText extends BufferedBase {
-    type: TextType.Font;
-    data: Buffer[];
-    font: Readonly<FontTableEntry>;
-}
-
-interface BufferedSymbolText extends BufferedBase {
-    type: TextType.Symbol;
-    data: (Buffer | string)[];
-    font: Readonly<FontTableEntry>;
-}
-
-type BufferedOutput = BufferedUnicodeText | BufferedCodepageText | BufferedFontText | BufferedSymbolText;
-
 export abstract class ProcessTokens extends Transform implements ProcessTokensGlobalState {
     // These members are all public to allow the handler functions to access without TS complaining...
     public _options: ProcessTokensOptions;
     public readonly _featureHandlers: FeatureHandler<CharacterSetGlobalState & FontGlobalState>[];
 
     // These members are all public to allow the handler functions to access without TS complaining...
-    public readonly _rootState: ProcessTokensGroupState = { uc: 1, groupDepth: 0, destDepth: 0 };
+    public readonly _rootState: ProcessTokensGroupState = { uc: 1, groupDepth: 0, destDepth: 0, destGroupDepth: 0 };
     public _state: ProcessTokensGroupState = this._rootState;
 
     public _cpg = 1252;
@@ -130,6 +60,10 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             ...procTokensDefaultOptions,
             ...options
         };
+    }
+
+    get defaultCodepage() {
+        return this._cpg;
     }
 
     _getBufferedOutputText(): false | [string, boolean] {
@@ -256,7 +190,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         return finfo;
     }
 
-    _getOutputChunk(data: Buffer | string): BufferedOutput {
+    _getOutputStruct(data: Buffer | string): BufferedOutput {
         const thisFont = this._getCurrentFont();
 
         // Symbol fonts need to be treated as font codepoints regardless of if given with Unicode or not
@@ -290,7 +224,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         }
     }
 
-    _canAddToBuffer(newChunk: BufferedOutput): boolean {
+    _canAddToBufferedOutput(newChunk: BufferedOutput): boolean {
         const bufd = this._bufferedOutput;
 
         if (!bufd) {
@@ -323,8 +257,8 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             }
         }
 
-        const newChunk = this._getOutputChunk(data);
-        if (this._canAddToBuffer(newChunk)) {
+        const newChunk = this._getOutputStruct(data);
+        if (this._canAddToBufferedOutput(newChunk)) {
             this._bufferedOutput!.data.push(newChunk.data[0] as any);
         } else {
             if (this._bufferedOutput) {

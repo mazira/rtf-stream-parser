@@ -5,7 +5,7 @@ export interface GlobalStateWithGroupState<T> {
     _rootState: T;
 }
 
-export interface GroupState {
+export interface GroupState extends Object {
     groupDepth: number;
 }
 

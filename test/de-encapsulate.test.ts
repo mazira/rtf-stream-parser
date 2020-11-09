@@ -527,6 +527,20 @@ describe('DeEncapsulate', () => {
 
                 expect(result.asText).to.eql('');
             });
+
+            it('should ignore any non-optional destinations inside optional destinations', async () => {
+                const input = [
+                    '{\\rtf1\\ansi\\fbidis\\ansicpg936\\deff0\\fromhtml1{\\fonttbl}',
+                    '{\\*\\someNewGroup{\\field some stupid text;}}',
+                    '}'
+                ];
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.be.an('array').of.length(0);
+
+                expect(result.asText).to.eql('');
+            });
         });
 
         it('should handle deeply nested HTML in reasonable time', async () => {
@@ -599,6 +613,23 @@ describe('DeEncapsulate', () => {
             expect(result.asText).to.eql('\r\n\r\n\t');
         });
     });
+
+    describe('fonttbl handling', async () => {
+        it('should allow a fonttbl font definition to not start with the \\f word', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg65001\\fromtext\\uc0{\\fonttbl`
+                + `{\\fcharset2 Wingdings;\\f0\\fswiss}{\\fswiss\\f1\\fcharset0 Times New Roman;}}`
+                + `{\\f0\\'80\\u128\\u-10179\\u-8704}\\par`
+                + `{\\f1\\'80\\u128\\u-10179\\u-8704}}`;
+
+            const result = await process(input);
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql(`\u0080\u0080😀\r\n€\u0080😀`);
+        });
+    });
+
 
     describe('symbolic fonts', async () => {
         it('should treat symbolic font characters as literal Unicode codepoints by default', async () => {

@@ -1,4 +1,5 @@
-
+/cli/
+/data/
 /src/
 /test/
 /dist/test/

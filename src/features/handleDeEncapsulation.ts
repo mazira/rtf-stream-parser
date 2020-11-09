@@ -87,15 +87,13 @@ export const handleDeEncapsulation: FeatureHandler<DeEncapsulationGlobalState> =
 
         const insideHtmltag = !!allDests['htmltag'];
 
-        const ignorable = global._state.destIgnorable || global._state.ancDestIgnorable;
-
         // Outside of htmltag, ignore anything in ignorable group
-        if (!insideHtmltag && ignorable) {
+        if (!insideHtmltag && global._state.destIgnorable) {
             return true;
         }
 
         // Outside of htmltag, ignore anything in known non-output groups
-        if (!insideHtmltag && (allDests['fonttbl'] || allDests['colortbl'] || allDests['pntext'])) {
+        if (!insideHtmltag && (allDests['fonttbl'] || allDests['colortbl'] || allDests['stylesheet'] || allDests['pntext'])) {
             return true;
         }
     },

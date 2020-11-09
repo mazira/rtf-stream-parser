@@ -10,7 +10,8 @@ import { handleGroupState } from './features/handleGroupState';
 import { GlobalStateWithGroupState } from './features/handleGroupState.types';
 import { handleUnicode } from './features/handleUnicode';
 import { FeatureHandler, WarnOption } from './features/types';
-import { ProcessTokens, ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions, procTokensDefaultOptions } from './ProcessTokens';
+import { ProcessTokens, procTokensDefaultOptions } from './ProcessTokens';
+import { ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions } from './ProcessTokens.types';
 
 export type Mode = 'text' | 'html' | 'either';
 
@@ -71,7 +72,7 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
     ];
 
     // These members are all public to allow the handler functions to access without TS complaining...
-    public readonly _rootState: DeEncGroupState = { uc: 1, groupDepth: 0, destDepth: 0 };
+    public readonly _rootState: DeEncGroupState = { uc: 1, groupDepth: 0, destDepth: 0, destGroupDepth: 0 };
     public _state: DeEncGroupState = this._rootState;
 
     public _fromhtml = false;
@@ -105,10 +106,6 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
 
     get originalHtmlCharset() {
         return this._originalHtmlCharset;
-    }
-
-    get defaultCodepage() {
-        return this._cpg;
     }
 
     _getBufferedOutputText() {

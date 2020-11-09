@@ -5,12 +5,14 @@ import { WarnOption } from './types';
 export type DestinationSet = Partial<{ [dest: string]: true }>;
 
 export interface ControlAndDestinationGroupState extends GroupState {
-    destDepth: number;
-
     destination?: string;
     allDestinations?: DestinationSet;
-    ancDestIgnorable?: boolean;
+
+    destIgnorableImmediate?: boolean;
     destIgnorable?: boolean;
+
+    destDepth: number;
+    destGroupDepth: number;
 }
 
 export interface ControlAndDestinationGlobalState extends GlobalStateWithGroupState<ControlAndDestinationGroupState>, WarnOption {

@@ -1,0 +1,33 @@
+import { checkVersion } from './features/checkVersion';
+import { countTokens } from './features/countTokens';
+import { handleCharacterSet } from './features/handleCharacterSet';
+import { handleControlsAndDestinations } from './features/handleControlsAndDestinations';
+import { handleFonts } from './features/handleFonts';
+import { handleGroupState } from './features/handleGroupState';
+import { handleUnicode } from './features/handleUnicode';
+import { ignoreOptionalDestOutput } from './features/ignoreOptionalDestOutput';
+import { FeatureHandler } from './features/types';
+import { ProcessTokens } from './ProcessTokens';
+import { ProcessTokensGlobalState, ProcessTokensOptions } from './ProcessTokens.types';
+
+export class ToPlainText extends ProcessTokens {
+    public _options: ProcessTokensOptions;
+    public readonly _featureHandlers: FeatureHandler<ProcessTokensGlobalState>[] = [
+        countTokens,
+        checkVersion,
+        handleGroupState,
+        handleUnicode,
+        handleControlsAndDestinations,
+        handleCharacterSet,
+        handleFonts,
+        ignoreOptionalDestOutput
+    ];
+
+    constructor(options?: Partial<ProcessTokensOptions>) {
+        super(options);
+    }
+
+    get defaultCodepage() {
+        return this._cpg;
+    }
+}

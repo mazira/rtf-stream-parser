@@ -1,6 +1,7 @@
+import { TokenType } from '../tokenize';
 import { isNum, isStr } from '../utils';
 import { FontGlobalState } from './handleFonts.types';
-import { ControlHandler, ControlHandlers, FeatureHandler, TextHandler } from './types';
+import { ControlHandler, ControlHandlers, FeatureHandler, TextHandler, TokenHandlers } from './types';
 
 const charsetToCpg: { [charset: number]: number } = {
     0: 1252,
@@ -46,32 +47,38 @@ for (const charset in charsetToCpg) {
 }
 
 const handleThemeFont: ControlHandler<FontGlobalState> = (global, cw) => {
-    if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
+    if (!global._constructingFontTableEntry) {
         throw new Error(cw + ' not in fonttbl');
     }
 
-    const f = global._state.font;
-    const fontEntry = f && global._fonttbl[f];
-    if (!f || !fontEntry) {
-        throw new Error(cw + ' with no current font');
-    }
-
-    fontEntry.themeFont = cw.word.slice(1);
+    global._constructingFontTableEntry.themeFont = cw.word.slice(1);
 };
 
 const handleFontFamily: ControlHandler<FontGlobalState> = (global, cw) => {
-    if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
+    if (!global._constructingFontTableEntry) {
         throw new Error(cw + ' not in fonttbl');
     }
 
-    const f = global._state.font;
-    const fontEntry = f && global._fonttbl[f];
-    if (!f || !fontEntry) {
-        throw new Error(cw + ' with no current font');
-    }
-
-    fontEntry.fontFamily = cw.word.slice(1);
+    global._constructingFontTableEntry.fontFamily = cw.word.slice(1);
 };
+
+const fontTokenHandlers: TokenHandlers<FontGlobalState> = {
+    [TokenType.GROUP_START]: global => {
+        if (global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth + 1) {
+            global._constructingFontTableEntry = {};
+        }
+    },
+    [TokenType.GROUP_END]: global => {
+        if (global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth) {
+            if (!global._constructingFontTableEntry || !global._constructingFontTableKey) {
+                throw new Error('Finished a font table group but no key?');
+            }
+            global._fonttbl![global._constructingFontTableKey] = global._constructingFontTableEntry;
+            global._constructingFontTableEntry = undefined;
+            global._constructingFontTableKey = undefined;
+        }
+    }
+}
 
 const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     // Set a default font, probably before font table
@@ -88,7 +95,7 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     fonttbl: (global, cw) => {
         if (global._fonttbl) {
             throw new Error('fonttbl already created');
-        } else if (global._state.destDepth !== 2) {
+        } else if (global._state.destDepth !== 2 || global._state.destGroupDepth !== 2) {
             throw new Error('fonttbl not in header');
         }
         global._fonttbl = {}
@@ -103,27 +110,24 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
         const f = cw.param + '';
 
         if (global._state.destination === 'fonttbl') {
-            // Create font table entry
-            global._fonttbl = global._fonttbl || {};
-            global._fonttbl[f] = global._fonttbl[f] || {};
-        } else if (!global._fonttbl || !global._fonttbl[f]) {
-            throw new Error('\\f control word for unknown font ' + f);
+            if (global._constructingFontTableEntry && global._constructingFontTableKey) {
+                throw new Error('\\f control word in font group which already has \\f');
+            } else if (global._constructingFontTableEntry) {
+                global._constructingFontTableKey = f;
+            } else {
+                throw new Error('Got strange \\f control word in fonttbl but not in fonttbl entry');
+            }
+        } else {
+            // Not building font table, set current font
+            // Set current font
+            global._state.font = f;
         }
-
-        // Set current font
-        global._state.font = f;
     },
 
     // Handle fcharset inside \fonttbl
     fcharset: (global, cw) => {
-        if (global._state.destination !== 'fonttbl' || !global._fonttbl) {
+        if (!global._constructingFontTableEntry) {
             throw new Error('fcharset not in fonttbl');
-        }
-
-        const f = global._state.font;
-        const fontEntry = f && global._fonttbl[f];
-        if (!f || !fontEntry) {
-            throw new Error('fcharset with no current font');
         }
 
         if (!isNum(cw.param)) {
@@ -142,27 +146,22 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
             if (!isNum(cpg)) {
                 global._options.warn('No codepage for charset ' + cw.param);
             } else {
-                fontEntry.fcharsetCpg = cpg;
+                global._constructingFontTableEntry.fcharsetCpg = cpg;
             }
         }
     },
 
     // Handle cpg inside \fonttbl
     cpg: (global, cw) => {
-        if (global._state.destination !== 'fonttbl' || !global._fonttbl)
+        if (!global._constructingFontTableEntry) {
             throw new Error('cpg not in fonttbl');
-
-        const f = global._state.font;
-        const fontEntry = f && global._fonttbl[f];
-        if (!f || !fontEntry) {
-            throw new Error('cpg with no current font');
         }
 
         const cpg = cw.param;
         if (!isNum(cpg)) {
             global._options.warn('No codepage given');
         } else {
-            fontEntry.cpg = cpg;
+            global._constructingFontTableEntry.cpg = cpg;
         }
     },
 
@@ -189,11 +188,8 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
 const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
     if (global._state.destination === 'fonttbl') {
-        const f = global._state.font;
-        const fontEntry = f && global._fonttbl && global._fonttbl[f];
-
-        if (!f || !fontEntry) {
-            throw new Error('font text with no current font');
+        if (!global._constructingFontTableEntry) {
+            throw new Error('fonttbl text with no current font');
         }
 
         // Has trailing semicolon
@@ -208,7 +204,7 @@ const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
             return '\\u' + '0000'.slice(0, 4 - hex.length) + hex;
         });
 
-        let str = (fontEntry.fontName || '') + data;
+        let str = (global._constructingFontTableEntry.fontName || '') + data;
 
         if (str.endsWith(';')) {
             str = str.substr(0, str.length - 1);
@@ -219,12 +215,13 @@ const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
             }
         }
 
-        fontEntry.fontName = str;
+        global._constructingFontTableEntry.fontName = str;
         return true;
     }
 }
 
 export const handleFonts: FeatureHandler<FontGlobalState> = {
+    tokenHandlers: fontTokenHandlers,
     controlHandlers: fontControlHandlers,
     outputDataFilter: fontTextHandler
 }

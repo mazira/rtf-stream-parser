@@ -289,7 +289,7 @@ export class Tokenize extends Transform {
             }
         } catch (err) {
             return cb(err);
-        } 
+        }
 
         cb();
     }
