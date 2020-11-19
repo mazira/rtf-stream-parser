@@ -2,10 +2,15 @@ import { Token, TokenType } from '../tokenize';
 import { GroupGlobalState, GroupState } from './handleGroupState.types';
 import { FeatureHandler, TokenHandler, TokenHandlers } from './types';
 
-const allTokenhandler: TokenHandler<GroupGlobalState, Token> = global => {
+const allTokenhandler: TokenHandler<GroupGlobalState, Token> = (global, token) => {
     // Warn and skip if we have any tokens after final }
     if (global._done) {
-        global._options.warn('Additional tokens after final closing bracket');
+        if (token.type === TokenType.TEXT && token.data.length === 1 && token.data[0] === 0) {
+            // Ignore trailing NULL
+        } else {
+            global._options.warn('Additional tokens after final closing bracket');
+        }
+
         // Ignore any further processing
         return true;
     }

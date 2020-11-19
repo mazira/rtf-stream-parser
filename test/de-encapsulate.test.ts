@@ -566,8 +566,18 @@ describe('DeEncapsulate', () => {
             + `Plain text body: ! < > " ' \\'80 \\'9c \\'a4 \\'b4 \\'bc \\'bd \\u-10175 ?\\u-8434 ? \\u-10137 ?\\u-8808 ? `
             + `\\u-10179 ?\\u-8704 ?\\par\r\n}`
 
-        it('should handle Unicode surrogate pairs with the default \\uc skip of 1', async () => {
+        it('should handle Unicode surrogate pairs with the default \\uc skip of 1 (text)', async () => {
             const input = "{\\rtf1\\ansi\\ansicpg1252\\fromtext{{{{{{\\u-10179 ?\\u-8704 ?}}}}}}}";
+            const result = await process(input, { mode: 'text' });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.be.an('array').of.length(0);
+
+            expect(result.asText).to.eql('😀');
+        });
+
+        it('should handle Unicode surrogate pairs with the default \\uc skip of 1 (control symbol)', async () => {
+            const input = "{\\rtf1\\ansi\\ansicpg1252\\fromtext{{{{{{\\u-10179\\'3f\\u-8704 ?}}}}}}}";
             const result = await process(input, { mode: 'text' });
 
             expect(result.warnings).to.be.an('array').of.length(0);
@@ -745,14 +755,14 @@ describe('DeEncapsulate', () => {
                 outputMode: 'buffer-default-cpg'
             });
 
-            expect(result.warnings).to.be.an('array').of.length(1);
+            expect(result.warnings).to.be.an('array').of.length(0);
             expect(result.decodings).to.be.an('array').of.length(2);
 
             expect(result.asBuffer.toString('utf16le')).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
     });
 
-    it('should properly decapsulate the spec example', async () => {
+    it('should properly de-encapsulate the spec example', async () => {
         const options: Partial<DeEncapsulateOptions> = {
             decode: iconvLite.decode,
             mode: 'html',
@@ -765,7 +775,7 @@ describe('DeEncapsulate', () => {
         expect(html).to.eql(html2);
     });
 
-    it('should properly decapsulate the JIS example', async () => {
+    it('should properly de-encapsulate the JIS example', async () => {
         const options: Partial<DeEncapsulateOptions> = {
             decode: iconvLite.decode,
             mode: 'text',

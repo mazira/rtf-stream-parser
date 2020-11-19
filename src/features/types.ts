@@ -1,10 +1,9 @@
 import { ControlToken, GroupEndToken, GroupStartToken, TextToken, Token, TokenType } from '../tokenize';
 
-type Result = true | string | Buffer | void;
-export type ControlHandler<G> = (global: G, token: ControlToken,) => Result;
+export type ControlHandler<G> = (global: G, token: ControlToken,) => void | true;
 export type ControlHandlers<G> = { [token: string]: ControlHandler<G> }
 
-export type TokenHandler<G, T extends Token> = (global: G, token: T) => Result;
+export type TokenHandler<G, T extends Token> = (global: G, token: T) => void | true;
 
 export type TokenHandlers<G> = {
     [TokenType.GROUP_START]?: TokenHandler<G, GroupStartToken>,
@@ -13,7 +12,7 @@ export type TokenHandlers<G> = {
     [TokenType.TEXT]?: TokenHandler<G, TextToken>
 }
 
-export type TextHandler<G> = (global: G, data: Buffer | string) => true | undefined;
+export type TextHandler<G> = (global: G, data: Buffer | string) => void | true;
 
 export interface FeatureHandler<G> {
     allTokenHandler?: TokenHandler<G, Token>,

@@ -14,7 +14,8 @@ async function run(filepath?: string) {
         return;
     }
 
-    const tokenize = new Tokenize();
+    const s1 = fs.createReadStream(filepath);
+    const s2 = new Tokenize();
 
     const options: Partial<ProcessTokensOptions> = {
         decode: (buf, enc) => {
@@ -26,14 +27,10 @@ async function run(filepath?: string) {
         warn: str => console.log('WARNING: ' + str)
     };
 
-    const stripText = new ToPlainText(options);
+    const s3 = new ToPlainText(options);
+    const s4 = fs.createWriteStream(filepath + '.txt');
 
-    stripText.on('data', chunk => {
-        console.log(chunk);
-    });
-
-    const stream = fs.createReadStream(filepath);
-    await pipelineAsync(stream, tokenize, stripText);
+    await pipelineAsync(s1, s2, s3, s4);
 }
 
 run(...process.argv.slice(2));

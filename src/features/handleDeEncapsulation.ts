@@ -42,10 +42,10 @@ const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState
 
         global._fromhtml = true;
         if (global._options.prefix) {
-            return 'html:';
-        } else {
-            return true;
+            global._pushOutput('html:');
         }
+
+        return true;
     },
 
     fromtext: global => {
@@ -61,10 +61,10 @@ const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState
 
         global._fromtext = true;
         if (global._options.prefix) {
-            return 'text:';
-        } else {
-            return true;
+            global._pushOutput('text:');
         }
+
+        return true;
     },
 
     htmlrtf: (global, token) => {

@@ -4,8 +4,10 @@ import { handleCharacterSet } from './features/handleCharacterSet';
 import { handleControlsAndDestinations } from './features/handleControlsAndDestinations';
 import { handleFonts } from './features/handleFonts';
 import { handleGroupState } from './features/handleGroupState';
-import { handleUnicode } from './features/handleUnicode';
+import { handleOutput } from './features/handleOutput';
+import { handleUnicodeSkip } from './features/handleUnicodeSkip';
 import { ignoreOptionalDestOutput } from './features/ignoreOptionalDestOutput';
+import { handleTextEscapes } from './features/textEscapes';
 import { FeatureHandler } from './features/types';
 import { ProcessTokens } from './ProcessTokens';
 import { ProcessTokensGlobalState, ProcessTokensOptions } from './ProcessTokens.types';
@@ -16,18 +18,18 @@ export class ToPlainText extends ProcessTokens {
         countTokens,
         checkVersion,
         handleGroupState,
-        handleUnicode,
+        handleUnicodeSkip,
+
         handleControlsAndDestinations,
         handleCharacterSet,
         handleFonts,
-        ignoreOptionalDestOutput
+        ignoreOptionalDestOutput,
+
+        handleOutput,
+        handleTextEscapes,
     ];
 
     constructor(options?: Partial<ProcessTokensOptions>) {
         super(options);
-    }
-
-    get defaultCodepage() {
-        return this._cpg;
     }
 }

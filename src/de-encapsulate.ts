@@ -8,7 +8,9 @@ import { handleFonts } from './features/handleFonts';
 import { FontTableEntry } from './features/handleFonts.types';
 import { handleGroupState } from './features/handleGroupState';
 import { GlobalStateWithGroupState } from './features/handleGroupState.types';
-import { handleUnicode } from './features/handleUnicode';
+import { handleOutput } from './features/handleOutput';
+import { handleUnicodeSkip } from './features/handleUnicodeSkip';
+import { handleTextEscapes } from './features/textEscapes';
 import { FeatureHandler, WarnOption } from './features/types';
 import { ProcessTokens, procTokensDefaultOptions } from './ProcessTokens';
 import { ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions } from './ProcessTokens.types';
@@ -64,11 +66,15 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
         countTokens,
         checkVersion,
         handleGroupState,
-        handleUnicode,
+        handleUnicodeSkip,
+
         handleControlsAndDestinations,
         handleCharacterSet,
         handleFonts,
         handleDeEncapsulation,
+
+        handleOutput,
+        handleTextEscapes,
     ];
 
     // These members are all public to allow the handler functions to access without TS complaining...
@@ -108,8 +114,8 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
         return this._originalHtmlCharset;
     }
 
-    _getBufferedOutputText() {
-        const result = super._getBufferedOutputText();
+    _getOutputAsString(data: string | Buffer, font?: FontTableEntry): [string, boolean] {
+        const result = super._getOutputAsString(data, font);
 
         if (result && this._bufdIsHtml && this._options.htmlFixContentType && !this._didHtmlCharsetReplace) {
             result[0] = result[0].replace(rxCharset, (match, pre, charset, post) => {

@@ -1,11 +1,10 @@
 import { Transform } from 'stream';
 import { recodeSymbolFontText } from './decode';
-import { CharacterSetGlobalState } from './features/handleCharacterSet.types';
-import { FontGlobalState, FontTable, FontTableEntry } from './features/handleFonts.types';
+import { FontTable, FontTableEntry } from './features/handleFonts.types';
 import { FeatureHandler } from './features/types';
-import { BufferedOutput, ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions, StringDecoder, StringEncoder, TextType } from './ProcessTokens.types';
+import { ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions, StringDecoder, StringEncoder } from './ProcessTokens.types';
 import { Token, TokenType } from './tokenize';
-import { isDef, isStr } from './utils';
+import { isStr } from './utils';
 
 const defaultStringDecoder: StringDecoder = (buf, enc) => buf.toString(enc);
 const defaultStringEncoder: StringEncoder = (str, enc) => Buffer.from(str, enc as BufferEncoding);
@@ -18,7 +17,7 @@ export const procTokensDefaultOptions: ProcessTokensOptions = {
     warn: console.warn
 }
 
-const knownSymbolFontNames: { [name: string]: true } = {
+const knownSymbolFontNames: Partial<{ [name: string]: true }> = {
     'Wingdings': true,
     'Wingdings 2': true,
     'Wingdings 3': true,
@@ -26,10 +25,17 @@ const knownSymbolFontNames: { [name: string]: true } = {
     'Symbol': true,
 }
 
+function isKnownSymbolFont(thisFont?: FontTableEntry): boolean {
+    return !!thisFont && (
+        thisFont.fcharsetCpg === 42
+        || thisFont.cpg === 42
+        || knownSymbolFontNames[thisFont.fontName || ''] === true);
+}
+
 export abstract class ProcessTokens extends Transform implements ProcessTokensGlobalState {
     // These members are all public to allow the handler functions to access without TS complaining...
     public _options: ProcessTokensOptions;
-    public readonly _featureHandlers: FeatureHandler<CharacterSetGlobalState & FontGlobalState>[];
+    public readonly _featureHandlers: FeatureHandler<ProcessTokensGlobalState>[];
 
     // These members are all public to allow the handler functions to access without TS complaining...
     public readonly _rootState: ProcessTokensGroupState = { uc: 1, groupDepth: 0, destDepth: 0, destGroupDepth: 0 };
@@ -50,9 +56,6 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
     // Represents how many tokens left to skip after \u
     public _skip = 0;
 
-    // Some text encodings can't be decoded byte by byte, so we buffer sequential text outputs
-    public _bufferedOutput: BufferedOutput | undefined;
-
     constructor(options?: Partial<ProcessTokensOptions>) {
         super({ writableObjectMode: true, readableObjectMode: true });
 
@@ -60,107 +63,84 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             ...procTokensDefaultOptions,
             ...options
         };
+
+        this._pushOutput = this._pushOutput.bind(this)
     }
 
     get defaultCodepage() {
         return this._cpg;
     }
 
-    _getBufferedOutputText(): false | [string, boolean] {
-        const bufd = this._bufferedOutput;
-        if (!bufd) {
-            return false;
-        }
-
-        let out: string;
+    _getOutputAsString(data: string | Buffer, font: FontTableEntry | undefined): [string, boolean] {
+        let outStr: string;
         let areSymbolFontCodepoints = false;
 
-        switch (bufd.type) {
-            case TextType.Unicode: {
-                out = bufd.data.join('');
-                break;
-            }
-            case TextType.Symbol: {
-                const chunks: string[] = [];
-                for (const chunk of bufd.data) {
-                    if (isStr(chunk)) {
-                        // Word treats 0xF000-0xF0FF the same as 0x0000-0x00FF for symbol fonts
-                        for (const c of chunk) {
-                            let codepoint = c.codePointAt(0) as number;
-                            if ((codepoint >= 0 && codepoint <= 0xFF) || (codepoint >= 0xF000 && codepoint <= 0xF0FF)) {
-                                chunks.push(String.fromCodePoint(codepoint % 0xF000));
-                            } else {
-                                chunks.push(String.fromCodePoint(codepoint));
-                            }
-                        }
+        if (font && isKnownSymbolFont(font)) {
+            const chunks: string[] = [];
+            if (isStr(data)) {
+                // Word treats 0xF000-0xF0FF the same as 0x0000-0x00FF for symbol fonts
+                for (const c of data) {
+                    let codepoint = c.codePointAt(0) as number;
+                    if ((codepoint >= 0 && codepoint <= 0xFF) || (codepoint >= 0xF000 && codepoint <= 0xF0FF)) {
+                        chunks.push(String.fromCodePoint(codepoint % 0xF000));
                     } else {
-                        chunks.push(chunk.toString('latin1'));
+                        chunks.push(String.fromCodePoint(codepoint));
                     }
                 }
-                const str1 = chunks.join('');
-
-                const fontname = bufd.font.fontName;
-                if (fontname
-                    && (this._options.replaceSymbolFontChars === true
-                        || (this._options.replaceSymbolFontChars && this._options.replaceSymbolFontChars[fontname]))
-                ) {
-                    const str2 = recodeSymbolFontText(str1, fontname, 'keep');
-                    out = str2 || '';
-                } else {
-                    // Emit the symbol font codepoints as-is
-                    out = str1;
-                    areSymbolFontCodepoints = true;
-                }
-                break;
+            } else {
+                chunks.push(data.toString('latin1'));
             }
-            case TextType.Codepage:
-            case TextType.Font: {
-                const cpg = bufd.type === TextType.Codepage
-                    ? bufd.codepage
-                    : bufd.font.cpg || bufd.font.fcharsetCpg || this._cpg;
+            const str1 = chunks.join('');
 
-                const buf = Buffer.concat(bufd.data);
-
-                if (cpg === 20127 || cpg === 65001) {
-                    out = buf.toString('utf8');
-                } else if (cpg === 1200) {
-                    throw new Error('Decoding 1200');
-                    out = buf.toString('utf16le');
-                } else if (cpg) {
-                    out = this._options.decode(buf, 'cp' + cpg);
-                } else {
-                    console.log('HELP1!');
-                    throw new Error('text with no codepage');
-                }
-                break;
+            const fontname = font.fontName;
+            if (fontname
+                && (this._options.replaceSymbolFontChars === true
+                    || (this._options.replaceSymbolFontChars && this._options.replaceSymbolFontChars[fontname]))
+            ) {
+                const str2 = recodeSymbolFontText(str1, fontname, 'keep');
+                outStr = str2 || '';
+            } else {
+                // Emit the symbol font codepoints as-is
+                outStr = str1;
+                areSymbolFontCodepoints = true;
             }
-            default: {
-                throw new Error('Unhandled type of buffered data');
+        } else if (isStr(data)) {
+            outStr = data;
+        } else {
+            // Codepage data... either font codepage or default codepage
+            const cpg = font
+                ? font.cpg || font.fcharsetCpg || this._cpg
+                : this._cpg
+
+
+            if (cpg === 20127 || cpg === 65001) {
+                outStr = data.toString('utf8');
+            } else if (cpg === 1200) {
+                throw new Error('Decoding 1200');
+                outStr = data.toString('utf16le');
+            } else if (cpg) {
+                outStr = this._options.decode(data, 'cp' + cpg);
+            } else {
+                console.log('HELP1!');
+                throw new Error('text with no codepage');
             }
         }
 
-        return [out, areSymbolFontCodepoints];
+        return [outStr, areSymbolFontCodepoints];
     }
 
-    _flushBuffer() {
-        const outResult = this._getBufferedOutputText();
-        if (!outResult) {
-            return;
-        }
-
-        const [out, areSymbolFontCodepoints] = outResult;
-
+    _pushOutputData(outStr: string, areSymbolFontCodepoints: boolean) {
         if (this._options.outputMode === 'buffer-utf8') {
-            this.push(Buffer.from(out, 'utf8'));
+            this.push(Buffer.from(outStr, 'utf8'));
         } else if (this._options.outputMode === 'buffer-default-cpg' && this._options.encode) {
             if (this._cpg === 20127 || this._cpg === 65001) {
-                this.push(Buffer.from(out, 'utf8'));
+                this.push(Buffer.from(outStr, 'utf8'));
             } else if (this._cpg === 1200) {
-                this.push(Buffer.from(out, 'utf16le'));
+                this.push(Buffer.from(outStr, 'utf16le'));
             } else if (areSymbolFontCodepoints) {
                 // Just emit the symbol font codepoints as 8-bit values
                 const bytes: number[] = [];
-                for (const c of out) {
+                for (const c of outStr) {
                     const codepoint = c.charCodeAt(0) as number;
                     if (codepoint > 0xFF) {
                         bytes.push(0x20);
@@ -171,14 +151,14 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
                 this.push(Buffer.from(bytes));
             } else {
                 try {
-                    const buf = this._options.encode(out, 'cp' + this._cpg);
+                    const buf = this._options.encode(outStr, 'cp' + this._cpg);
                     this.push(buf);
                 } catch (err) {
                     this._options.warn('Unable to encode to cp' + this._cpg)
                 }
             }
         } else {
-            this.push(out);
+            this.push(outStr);
         }
     }
 
@@ -190,63 +170,8 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         return finfo;
     }
 
-    _getOutputStruct(data: Buffer | string): BufferedOutput {
-        const thisFont = this._getCurrentFont();
-
-        // Symbol fonts need to be treated as font codepoints regardless of if given with Unicode or not
-        if (thisFont && (
-            thisFont.fcharsetCpg === 42
-            || thisFont.cpg === 42
-            || (thisFont.fontName && knownSymbolFontNames[thisFont.fontName]))
-        ) {
-            return {
-                type: TextType.Symbol,
-                font: thisFont,
-                data: [data],
-            };
-        } else if (isStr(data)) {
-            return {
-                type: TextType.Unicode,
-                data: [data],
-            };
-        } else if (thisFont) {
-            return {
-                type: TextType.Font,
-                font: thisFont,
-                data: [data]
-            };
-        } else {
-            return {
-                type: TextType.Codepage,
-                codepage: this._cpg,
-                data: [data]
-            };
-        }
-    }
-
-    _canAddToBufferedOutput(newChunk: BufferedOutput): boolean {
-        const bufd = this._bufferedOutput;
-
-        if (!bufd) {
-            return false;
-        }
-
-        switch (bufd.type) {
-            case TextType.Symbol:
-                return newChunk.type === TextType.Symbol && bufd.font === newChunk.font;
-            case TextType.Unicode:
-                return newChunk.type === TextType.Unicode;
-            case TextType.Font:
-                return newChunk.type === TextType.Font && bufd.font === newChunk.font;
-            case TextType.Codepage:
-                return newChunk.type === TextType.Codepage && bufd.codepage === newChunk.codepage;
-            default:
-                return false;
-        }
-    }
-
     // Outputs Unicode text if in the proper state
-    _doText(data: Buffer | string) {
+    _pushOutput(data: Buffer | string) {
         // Handle font names
         for (const feature of this._featureHandlers) {
             if (feature.outputDataFilter) {
@@ -257,16 +182,10 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             }
         }
 
-        const newChunk = this._getOutputStruct(data);
-        if (this._canAddToBufferedOutput(newChunk)) {
-            this._bufferedOutput!.data.push(newChunk.data[0] as any);
-        } else {
-            if (this._bufferedOutput) {
-                this._flushBuffer();
-            }
+        const font = this._getCurrentFont();
 
-            this._bufferedOutput = newChunk;
-        }
+        const [outStr, areSymbolFontCodepoints] = this._getOutputAsString(data, font);
+        this._pushOutputData(outStr, areSymbolFontCodepoints);
     }
 
     _handleToken(token: Token) {
@@ -275,10 +194,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             for (const feature of this._featureHandlers) {
                 if (feature.allTokenHandler) {
                     const result = feature.allTokenHandler(this, token);
-                    if (isDef(result)) {
-                        if (result !== true) {
-                            this._doText(result);
-                        }
+                    if (result) {
                         return;
                     }
                 }
@@ -290,10 +206,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
                     const tokenHandler = feature.tokenHandlers[token.type];
                     if (tokenHandler) {
                         const result = tokenHandler(this, token as any);
-                        if (isDef(result)) {
-                            if (result !== true) {
-                                this._doText(result);
-                            }
+                        if (result) {
                             return;
                         }
                     }
@@ -305,10 +218,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
                 for (const feature of this._featureHandlers) {
                     if (feature.controlHandlers && feature.controlHandlers[token.word]) {
                         const result = feature.controlHandlers[token.word](this, token);
-                        if (isDef(result)) {
-                            if (result !== true) {
-                                this._doText(result);
-                            }
+                        if (result) {
                             return;
                         }
                     }
@@ -336,8 +246,6 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         } catch (err) {
             error = err;
         }
-
-        this._flushBuffer();
 
         cb(error);
     }
