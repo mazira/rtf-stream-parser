@@ -5,7 +5,12 @@ import { isDef } from './utils';
 
 export { Tokenize, DeEncapsulate };
 
-export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEncapsulateOptions>) {
+interface Result {
+    mode: 'text' | 'html';
+    text: string | Buffer;
+}
+
+export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEncapsulateOptions>): Result {
     const onError = (err?: any) => {
         if (isDef(err)) {
             throw err;
@@ -42,7 +47,7 @@ export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEnca
     };
 }
 
-export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Partial<DeEncapsulateOptions>) {
+export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Partial<DeEncapsulateOptions>): Promise<Result> {
     const stream1 = new Tokenize();
     const stream2 = new DeEncapsulate(options);
 

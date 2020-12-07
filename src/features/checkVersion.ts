@@ -21,4 +21,4 @@ export const checkVersion: FeatureHandler<TokenCountGlobalState> = {
             throw new Error('File should start with "{\\rtf"');
         }
     }
-}
+};

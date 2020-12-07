@@ -78,7 +78,7 @@ const fontTokenHandlers: TokenHandlers<FontGlobalState> = {
             global._constructingFontTableKey = undefined;
         }
     }
-}
+};
 
 const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     // Set a default font, probably before font table
@@ -92,13 +92,13 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     },
 
     // Handle initializing the font table
-    fonttbl: (global, cw) => {
+    fonttbl: global => {
         if (global._fonttbl) {
             throw new Error('fonttbl already created');
         } else if (global._state.destDepth !== 2 || global._state.destGroupDepth !== 2) {
             throw new Error('fonttbl not in header');
         }
-        global._fonttbl = {}
+        global._fonttbl = {};
     },
 
     // Handle font definition (inside \fonttbl) or font selection (outside \fonttlb)
@@ -184,7 +184,7 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     fdecor: handleFontFamily,
     ftech: handleFontFamily,
     fbidi: handleFontFamily,
-}
+};
 
 const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
     if (global._state.destination === 'fonttbl') {
@@ -218,10 +218,10 @@ const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
         global._constructingFontTableEntry.fontName = str;
         return true;
     }
-}
+};
 
 export const handleFonts: FeatureHandler<FontGlobalState> = {
     tokenHandlers: fontTokenHandlers,
     controlHandlers: fontControlHandlers,
     outputDataFilter: fontTextHandler
-}
+};

@@ -42,12 +42,16 @@ export async function streamFlow<T>(stream1: NodeJS.ReadableStream, ...streams: 
         const output: T[] = [];
 
         sout.on('readable', () => {
-            let piece: T;
-            while (piece = sout.read() as any) {
+            while (true) {
+                const piece: T = sout.read() as any;
+                if (piece === null) {
+                    break;
+                }
+
                 output.push(piece);
             }
         });
 
         sout.on('end', () => resolve(output));
     });
-};
+}

@@ -14,7 +14,7 @@ const allTokenhandler: TokenHandler<GroupGlobalState, Token> = (global, token) =
         // Ignore any further processing
         return true;
     }
-}
+};
 
 const groupTokenHandlers: TokenHandlers<GroupGlobalState> = {
     [TokenType.GROUP_START]: global => {
@@ -31,7 +31,7 @@ const groupTokenHandlers: TokenHandlers<GroupGlobalState> = {
             global._done = true;
         }
     },
-}
+};
 
 export const handleGroupState: FeatureHandler<GroupGlobalState> = {
     allTokenHandler: allTokenhandler,
@@ -41,4 +41,4 @@ export const handleGroupState: FeatureHandler<GroupGlobalState> = {
             global._options.warn('Not enough matching closing brackets');
         }
     }
-}
+};

@@ -72,7 +72,7 @@ const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState
         const on = token.param !== 0;
         global._state.htmlrtf = on;
     }
-}
+};
 
 export const handleDeEncapsulation: FeatureHandler<DeEncapsulationGlobalState> = {
     allTokenHandler: allTokenHandler,
@@ -103,4 +103,4 @@ export const handleDeEncapsulation: FeatureHandler<DeEncapsulationGlobalState> =
             throw getModeError(global);
         }
     }
-}
+};

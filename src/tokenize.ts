@@ -73,7 +73,7 @@ export class Tokenize extends Transform {
         this._mode = Mode.NORMAL;
     }
 
-    _flushToken() {
+    _flushToken(): void {
         const token = this._token;
 
         if (token) {
@@ -104,7 +104,7 @@ export class Tokenize extends Transform {
         this._mode = Mode.NORMAL;
     }
 
-    _handleSpecialOrPush() {
+    _handleSpecialOrPush(): void {
         // We know we have a token here...
         const token = this._token as Token;
         const param = parseInt(this._paramStr || '0', 10) || 0;
@@ -123,7 +123,7 @@ export class Tokenize extends Transform {
         }
     }
 
-    _handleByte(c: number) {
+    _handleByte(c: number): void {
         switch (this._mode) {
             // If eating binary data, do it!
             case Mode.BINARY: {
@@ -280,7 +280,7 @@ export class Tokenize extends Transform {
         }
     }
 
-    _transform(chunk: Buffer | string, encoding: string | undefined, cb: (err?: any) => void) {
+    _transform(chunk: Buffer | string, encoding: string | undefined, cb: (err?: any) => void): void {
         try {
             const buf = isStr(chunk) ? Buffer.from(chunk, encoding as BufferEncoding) : chunk;
             for (let i = 0; i < buf.length; i++) {
@@ -294,7 +294,7 @@ export class Tokenize extends Transform {
         cb();
     }
 
-    _flush(cb: () => void) {
+    _flush(cb: () => void): void {
         this._flushToken();
         cb();
     }

@@ -1,3 +1,5 @@
+/* eslint-disable quote-props */
+/* eslint-disable @typescript-eslint/quotes */
 /**
  * This file generated from words.json
  */
@@ -1824,4 +1826,4 @@ export const words: { [word: string]: WordType } = {
     "zwj": WordType.SYMBOL,
     "zwnbo": WordType.SYMBOL,
     "zwnj": WordType.SYMBOL,
-}
+};

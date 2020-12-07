@@ -24,6 +24,6 @@ module.exports = {
             ignoreRestSiblings: true
         }],
         'quote-props': ['warn', 'as-needed'],
-        'no-shadow': ['warn']
+        '@typescript-eslint/no-shadow': ['warn']
     }
 };

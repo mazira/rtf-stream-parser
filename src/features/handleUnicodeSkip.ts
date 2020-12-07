@@ -43,12 +43,12 @@ const unicodeSkipControlHandlers: ControlHandlers<UnicodeSkipGlobalState> = {
         global._state.uc = token.param || 0;
     },
 
-    u: (global, token) => {
+    u: global => {
         global._skip = global._state.uc;
     }
-}
+};
 
 export const handleUnicodeSkip: FeatureHandler<UnicodeSkipGlobalState> = {
     allTokenHandler: allTokenHandler,
     controlHandlers: unicodeSkipControlHandlers,
-}
+};

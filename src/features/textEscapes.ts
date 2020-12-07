@@ -26,6 +26,6 @@ export const handleTextEscapes: FeatureHandler<OutputGlobalState> = {
         '}': globals => globals._pushOutput('}'),
         '\\': globals => globals._pushOutput('\\'),
         '~': globals => globals._pushOutput('\u00A0'),
-        '_': globals => globals._pushOutput('\u00AD'),
+        _: globals => globals._pushOutput('\u00AD'),
     }
-}
+};

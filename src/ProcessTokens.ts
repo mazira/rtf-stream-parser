@@ -15,15 +15,15 @@ export const procTokensDefaultOptions: ProcessTokensOptions = {
     outputMode: 'string',
     replaceSymbolFontChars: false,
     warn: console.warn
-}
+};
 
 const knownSymbolFontNames: Partial<{ [name: string]: true }> = {
-    'Wingdings': true,
+    Wingdings: true,
     'Wingdings 2': true,
     'Wingdings 3': true,
-    'Webdings': true,
-    'Symbol': true,
-}
+    Webdings: true,
+    Symbol: true,
+};
 
 function isKnownSymbolFont(thisFont?: FontTableEntry): boolean {
     return !!thisFont && (
@@ -64,10 +64,10 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             ...options
         };
 
-        this._pushOutput = this._pushOutput.bind(this)
+        this._pushOutput = this._pushOutput.bind(this);
     }
 
-    get defaultCodepage() {
+    get defaultCodepage(): number {
         return this._cpg;
     }
 
@@ -80,7 +80,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             if (isStr(data)) {
                 // Word treats 0xF000-0xF0FF the same as 0x0000-0x00FF for symbol fonts
                 for (const c of data) {
-                    let codepoint = c.codePointAt(0) as number;
+                    const codepoint = c.codePointAt(0) as number;
                     if ((codepoint >= 0 && codepoint <= 0xFF) || (codepoint >= 0xF000 && codepoint <= 0xF0FF)) {
                         chunks.push(String.fromCodePoint(codepoint % 0xF000));
                     } else {
@@ -110,7 +110,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             // Codepage data... either font codepage or default codepage
             const cpg = font
                 ? font.cpg || font.fcharsetCpg || this._cpg
-                : this._cpg
+                : this._cpg;
 
 
             if (cpg === 20127 || cpg === 65001) {
@@ -129,7 +129,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         return [outStr, areSymbolFontCodepoints];
     }
 
-    _pushOutputData(outStr: string, areSymbolFontCodepoints: boolean) {
+    _pushOutputData(outStr: string, areSymbolFontCodepoints: boolean): void {
         if (this._options.outputMode === 'buffer-utf8') {
             this.push(Buffer.from(outStr, 'utf8'));
         } else if (this._options.outputMode === 'buffer-default-cpg' && this._options.encode) {
@@ -154,7 +154,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
                     const buf = this._options.encode(outStr, 'cp' + this._cpg);
                     this.push(buf);
                 } catch (err) {
-                    this._options.warn('Unable to encode to cp' + this._cpg)
+                    this._options.warn('Unable to encode to cp' + this._cpg);
                 }
             }
         } else {
@@ -171,7 +171,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
     }
 
     // Outputs Unicode text if in the proper state
-    _pushOutput(data: Buffer | string) {
+    _pushOutput(data: Buffer | string): void {
         // Handle font names
         for (const feature of this._featureHandlers) {
             if (feature.outputDataFilter) {
@@ -188,7 +188,7 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         this._pushOutputData(outStr, areSymbolFontCodepoints);
     }
 
-    _handleToken(token: Token) {
+    _handleToken(token: Token): void {
         try {
             // Do all token functions
             for (const feature of this._featureHandlers) {
@@ -229,12 +229,12 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
         }
     }
 
-    _transform(token: Token, encoding: string | undefined, cb: (error?: any) => void) {
+    _transform(token: Token, encoding: string | undefined, cb: (error?: any) => void): void {
         const error = this._handleToken(token);
         cb(error);
     }
 
-    _flush(cb: (error?: any) => void) {
+    _flush(cb: (error?: any) => void): void {
         let error;
 
         try {

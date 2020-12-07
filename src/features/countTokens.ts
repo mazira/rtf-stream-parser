@@ -5,4 +5,4 @@ export const countTokens: FeatureHandler<TokenCountGlobalState> = {
     allTokenHandler: global => {
         ++global._count;
     }
-}
+};

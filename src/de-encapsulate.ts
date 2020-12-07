@@ -37,7 +37,7 @@ const deEncExtraDefaultOptions: DeEncapsulateExtraOptions = {
     htmlFixContentType: false,
     mode: 'either',
     prefix: false
-}
+};
 
 export type DeEncapsulateOptions = DeEncapsulateExtraOptions & ProcessTokensOptions;
 
@@ -102,15 +102,15 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
         };
     }
 
-    get isHtml() {
+    get isHtml(): boolean {
         return this._fromhtml;
     }
 
-    get isText() {
+    get isText(): boolean {
         return this._fromtext;
     }
 
-    get originalHtmlCharset() {
+    get originalHtmlCharset(): string | undefined {
         return this._originalHtmlCharset;
     }
 

@@ -3,7 +3,7 @@ import { isDef, isStr } from './utils';
 type FontToUnicode = number[] | string;
 
 export const fontToUnicode: { [font: string]: FontToUnicode | undefined } = {
-    'Wingdings': [
+    Wingdings: [
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
@@ -105,7 +105,7 @@ export const fontToUnicode: { [font: string]: FontToUnicode | undefined } = {
         0x1F897, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
     ],
-    'Webdings': [
+    Webdings: [
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
         0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020, 0x00020,
@@ -139,7 +139,7 @@ export const fontToUnicode: { [font: string]: FontToUnicode | undefined } = {
         0x1F5E7, 0x1F6EA, 0x1F43F, 0x1F426, 0x1F41F, 0x1F415, 0x1F408, 0x1F66C,
         0x1F66E, 0x1F66D, 0x1F66F, 0x1F5FA, 0x1F30D, 0x1F30F, 0x1F30E, 0x1F54A,
     ],
-    'Symbol': ''
+    Symbol: ''
         + '\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020'
         + '\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020'
         + '\u0020\u0020\u0020\u0020\u0020\u0020\u0020\u0020'
@@ -180,14 +180,14 @@ export function recodeSymbolFontText(input: string, font: string, unmapped: 'kee
         const parts: string[] = [];
 
         for (const c of input) {
-            let codepoint = c.codePointAt(0) as number;
+            const codepoint = c.codePointAt(0) as number;
             const codepoint2 = mapping[codepoint];
             if (isDef(codepoint2)) {
                 parts.push(isStr(codepoint2) ? codepoint2 : String.fromCodePoint(codepoint2));
             } else {
                 if (unmapped === 'keep') {
                     parts.push(c);
-                } else if (unmapped = '?') {
+                } else if (unmapped === '?') {
                     parts.push('?');
                 }
             }

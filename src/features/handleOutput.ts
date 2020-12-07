@@ -30,7 +30,7 @@ const allTokenHandler: TokenHandler<OutputGlobalState, Token> = (global, token) 
         // Continue Buffering Unicode as long as we get \' control words
         flushBuffers(global);
     }
-}
+};
 
 const tokenHandlers: TokenHandlers<OutputGlobalState> = {
     /*
@@ -74,11 +74,11 @@ const unicodeControlHandlers: ControlHandlers<OutputGlobalState> = {
         global._bufferedBinaryOutput = global._bufferedBinaryOutput || [];
         global._bufferedBinaryOutput.push(token.data!);
     }
-}
+};
 
 
 export const handleOutput: FeatureHandler<OutputGlobalState> = {
     allTokenHandler: allTokenHandler,
     tokenHandlers: tokenHandlers,
     controlHandlers: unicodeControlHandlers,
-}
+};

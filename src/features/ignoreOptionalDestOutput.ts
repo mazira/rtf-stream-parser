@@ -14,4 +14,4 @@ export const ignoreOptionalDestOutput: FeatureHandler<ControlAndDestinationGloba
             return true;
         }
     }
-}
+};

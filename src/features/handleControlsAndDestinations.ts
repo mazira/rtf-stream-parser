@@ -57,7 +57,7 @@ const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalSta
             }
         }
     },
-}
+};
 
 export const handleControlsAndDestinations: FeatureHandler<ControlAndDestinationGlobalState> = {
     tokenHandlers: destinationControlHandlers,
@@ -66,4 +66,4 @@ export const handleControlsAndDestinations: FeatureHandler<ControlAndDestination
         global._lastToken = global._currToken;
         global._currToken = token;
     }
-}
+};

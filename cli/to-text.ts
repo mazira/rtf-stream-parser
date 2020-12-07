@@ -19,10 +19,10 @@ async function run(filepath?: string) {
 
     const options: Partial<ProcessTokensOptions> = {
         decode: (buf, enc) => {
-            return iconvLite.decode(buf, enc)
+            return iconvLite.decode(buf, enc);
         },
         encode: (str, enc) => {
-            return iconvLite.encode(str, enc)
+            return iconvLite.encode(str, enc);
         },
         warn: str => console.log('WARNING: ' + str)
     };

@@ -21,6 +21,6 @@ export interface FontGroupState extends ControlAndDestinationGroupState {
 export interface FontGlobalState extends GlobalStateWithGroupState<FontGroupState>, WarnOption {
     _deff?: string;
     _fonttbl?: FontTable;
-    _constructingFontTableEntry?: FontTableEntry
-    _constructingFontTableKey?: string
+    _constructingFontTableEntry?: FontTableEntry;
+    _constructingFontTableKey?: string;
 }

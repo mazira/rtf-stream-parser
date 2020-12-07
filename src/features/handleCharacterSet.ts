@@ -27,7 +27,7 @@ const characterSetControlHandlers: ControlHandlers<CharacterSetGlobalState> = {
         global._ansicpg = true;
         global._cpg = token.param;
     },
-}
+};
 
 export const handleCharacterSet: FeatureHandler<FontGlobalState> = {
     controlHandlers: characterSetControlHandlers,

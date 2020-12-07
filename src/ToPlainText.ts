@@ -23,10 +23,11 @@ export class ToPlainText extends ProcessTokens {
         handleControlsAndDestinations,
         handleCharacterSet,
         handleFonts,
-        ignoreOptionalDestOutput,
 
         handleOutput,
         handleTextEscapes,
+
+        ignoreOptionalDestOutput,
     ];
 
     constructor(options?: Partial<ProcessTokensOptions>) {
