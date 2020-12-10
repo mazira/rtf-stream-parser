@@ -13,6 +13,7 @@ export interface DeEncapsulationGlobalState extends GlobalStateWithGroupState<De
     _options: {
         mode: 'text' | 'html' | 'either'
         prefix: boolean;
+        outlookQuirksMode: boolean;
     }
     _fromhtml: boolean;
     _fromtext: boolean;

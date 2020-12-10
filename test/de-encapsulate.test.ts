@@ -1,3 +1,4 @@
+/* eslint-disable @typescript-eslint/no-empty-function */
 import * as chai from 'chai';
 import * as chaiAsPromised from 'chai-as-promised';
 import * as fs from 'fs';
@@ -22,11 +23,11 @@ describe('DeEncapsulate', () => {
         const options2: Partial<DeEncapsulateOptions> = {
             decode: (buf, enc) => {
                 decodings.add(enc);
-                return iconvLite.decode(buf, enc)
+                return iconvLite.decode(buf, enc);
             },
             encode: (str, enc) => {
                 encodings.add(enc);
-                return iconvLite.encode(str, enc)
+                return iconvLite.encode(str, enc);
             },
             warn: str => warnings.push(str),
             ...options
@@ -48,7 +49,7 @@ describe('DeEncapsulate', () => {
                 streamIn.push(input);
             }
             streamIn.push(null);
-        }, 1)
+        }, 1);
 
         const results = await p;
         return {
@@ -63,7 +64,7 @@ describe('DeEncapsulate', () => {
             htmlCharset: deEncapsulate.originalHtmlCharset,
             defaultCodepage: deEncapsulate.defaultCodepage,
         };
-    };
+    }
 
     describe('detection', () => {
         it(`should throw an error if input doesn't start with "{\\rtf[0,1]"`, async () => {
@@ -142,11 +143,21 @@ describe('DeEncapsulate', () => {
                 .to.be.rejectedWith('Not encapsulated text file');
         });
 
-        it('should ignore any content after closing bracket', async () => {
+        it('should ignore any content after closing bracket (and warn)', async () => {
             const input = '{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1 hello}hello';
             const result = await process(input);
             expect(result.asText).to.eql('hello');
+            expect(result.warnings).to.have.length(1);
+            expect(result.warnings[0]).to.equal('Additional tokens after final closing bracket');
         });
+
+        it('should warn if root {\\rtf group not fully closed', async () => {
+            const input = '{\\rtf1\\t3\\t4\\t5\\t6\\t7\\t8\\t9\\fromhtml1 hello';
+            const result = await process(input);
+            expect(result.asText).to.eql('hello');
+            expect(result.warnings).to.have.length(1);
+            expect(result.warnings[0]).to.equal('Not enough matching closing brackets');
+        })
     });
 
     describe('html text output', () => {
@@ -440,7 +451,7 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('A');
             });
 
-            it('should ignore text inside htmlrtf ignores', async () => {
+            it('should ignore text inside htmlrtf suppression', async () => {
                 const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf hello\\htmlrtf0}";
                 const result = await process(input);
 
@@ -449,6 +460,7 @@ describe('DeEncapsulate', () => {
 
                 expect(result.asText).to.eql('');
             });
+
 
             it('should track htmlrtf state in groups', async () => {
                 const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf{\\htmlrtf0}hello\\htmlrtf0}";
@@ -759,6 +771,22 @@ describe('DeEncapsulate', () => {
             expect(result.decodings).to.be.an('array').of.length(2);
 
             expect(result.asBuffer.toString('utf16le')).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
+        });
+
+        /**
+         * This isn't very clear in the spec, but I've seen Outlook create RTF that has too many closing brackets
+         * that prematurely close the {\rtf...} destination if { and } are tracked inside htmlrtf ignores. Ignoring
+         * these brackets inside htmlrtf ignores fixes these files, allowing the full HTML to be de-encapsulated.
+         */
+        it('should ignore groups tokens inside htmlrtf suppression when in "quirks" mode', async () => {
+            const input = String.raw`{\rtf1\ansi\ansicpg1252\fromhtml1\deff0{\fonttbl{\f0}}\htmlrtf}}}}}}hello\htmlrtf0 hello}`;
+            const result = await process(input, {
+                outlookQuirksMode: true
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+
+            expect(result.asText).to.eql('hello');
         });
     });
 

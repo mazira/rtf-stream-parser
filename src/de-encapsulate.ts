@@ -3,7 +3,7 @@ import { countTokens } from './features/countTokens';
 import { handleCharacterSet } from './features/handleCharacterSet';
 import { handleControlsAndDestinations } from './features/handleControlsAndDestinations';
 import { handleDeEncapsulation } from './features/handleDeEncapsulation';
-import { DeEncapsulationGlobalState, DeEncapsulationGroupState } from './features/handleDeEncapsulation.types';
+import { DeEncapsulationGlobalState } from './features/handleDeEncapsulation.types';
 import { handleFonts } from './features/handleFonts';
 import { FontTableEntry } from './features/handleFonts.types';
 import { handleGroupState } from './features/handleGroupState';
@@ -17,7 +17,7 @@ import { ProcessTokensGlobalState, ProcessTokensGroupState, ProcessTokensOptions
 
 export type Mode = 'text' | 'html' | 'either';
 
-interface DeEncGroupState extends ProcessTokensGroupState, DeEncapsulationGroupState { }
+type DeEncGroupState = ProcessTokensGroupState;
 
 interface DeEncGlobalState extends ProcessTokensGlobalState, DeEncapsulationGlobalState, GlobalStateWithGroupState<DeEncGroupState> {
     _options: DeEncapsulationGlobalState['_options'] & WarnOption['_options'],
@@ -30,13 +30,15 @@ interface DeEncapsulateExtraOptions {
     htmlFixContentType: boolean;
     mode: Mode;
     prefix: boolean;
+    outlookQuirksMode: boolean;
 }
 
 const deEncExtraDefaultOptions: DeEncapsulateExtraOptions = {
     htmlEncodeNonAscii: false,
     htmlFixContentType: false,
     mode: 'either',
-    prefix: false
+    prefix: false,
+    outlookQuirksMode: false,
 };
 
 export type DeEncapsulateOptions = DeEncapsulateExtraOptions & ProcessTokensOptions;

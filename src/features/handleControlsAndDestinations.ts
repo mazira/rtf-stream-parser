@@ -24,6 +24,10 @@ function addDestination(state: ControlAndDestinationGroupState, destination: str
 
 const destinationControlHandlers: ControlHandlers<ControlAndDestinationGlobalState> = {
     [TokenType.CONTROL]: (global, token) => {
+        if (token.word === '*' && global._lastToken?.type !== TokenType.GROUP_START) {
+            global._options.warn('Got control symbol "\\*" but not immediately after "{"');
+        }
+
         const wordType = words[token.word] || WordType.UNKNOWN;
 
         if (wordType === WordType.DESTINATION) {

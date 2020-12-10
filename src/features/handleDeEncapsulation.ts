@@ -25,6 +25,15 @@ const allTokenHandler: TokenHandler<DeEncapsulationGlobalState, Token> = (global
     } else if (!global._fromhtml && !global._fromtext) {
         throw getModeError(global);
     }
+
+    // Handle htmlrtf control word and rtf supression, done here to also supress
+    // normal group tokens { }
+    if (global._state.htmlrtf && global._options.outlookQuirksMode) {
+        // Ignore any tokens that are not \f
+        if (token.type !== TokenType.CONTROL || (token.word !== 'f' && token.word !== 'htmlrtf')) {
+            return true;
+        }
+    }
 };
 
 

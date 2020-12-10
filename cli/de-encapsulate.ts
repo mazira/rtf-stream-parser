@@ -22,17 +22,17 @@ async function run(filepath?: string) {
         encode: (str, enc) => {
             return iconvLite.encode(str, enc);
         },
-        warn: str => console.log('WARNING: ' + str)
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
+        warn: () => { },
     };
 
-    const stripText = new DeEncapsulate(options);
+    const deEncapsulate = new DeEncapsulate(options);
 
-    stripText.on('data', chunk => {
-        console.log(chunk);
-    });
-
-    const stream = fs.createReadStream(filepath);
-    await pipelineAsync(stream, tokenize, stripText);
+    console.time('process');
+    const streamIn = fs.createReadStream(filepath);
+    const streamOut = fs.createWriteStream(filepath + '.de-enc.txt');
+    await pipelineAsync(streamIn, tokenize, deEncapsulate, streamOut);
+    console.timeEnd('process');
 }
 
 run(...process.argv.slice(2));
