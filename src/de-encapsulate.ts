@@ -64,7 +64,7 @@ const rxCharset = /(\bcharset=)([\w-]+)(")/i;
 
 export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
     public _options: ProcessTokensOptions & DeEncapsulateExtraOptions;
-    public readonly _featureHandlers: FeatureHandler<DeEncGlobalState>[] = [
+    public readonly _featureHandlers: FeatureHandler<ProcessTokensGlobalState>[] = [
         countTokens,
         checkVersion,
         handleGroupState,

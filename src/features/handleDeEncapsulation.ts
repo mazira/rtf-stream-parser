@@ -36,7 +36,6 @@ const allTokenHandler: TokenHandler<DeEncapsulationGlobalState, Token> = (global
     }
 };
 
-
 const deEncapsulationControlHandlers: ControlHandlers<DeEncapsulationGlobalState> = {
     fromhtml: global => {
         if (global._state.destination !== 'rtf') {
