@@ -38,8 +38,10 @@ const charsetToCpg: { [charset: number]: number } = {
 
 // Make reverse map of codepages
 const codpages: { [charset: number]: true } = {
-    // Seen in the wild
-    20127: true
+    // Seen in the wild... these codepages don't have a corresponding charset,
+    // so in that case the charset is just set to the codepage directly
+    20127: true,
+    28591: true,
 };
 for (const charset in charsetToCpg) {
     const cpg = charsetToCpg[charset];

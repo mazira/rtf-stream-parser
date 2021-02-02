@@ -441,8 +441,18 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('A');
             });
 
+            it('should not warn when fcharset is set to codepage 28591 (technically incorrect but seen in wild)', async () => {
+                const input = String.raw`{\rtf1\ansi\fromhtml1\deff0{\fonttbl{\f0\fcharset28591}}\'E9}`;
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(0);
+                expect(result.decodings).to.deep.equal(['cp28591']);
+
+                expect(result.asText).to.eql('é');
+            });
+
             it('should not warn when fcharset is set to codepage 1252 (technically incorrect but seen in wild)', async () => {
-                const input = "{\\rtf1\\ansi\\fromhtml1\\deff0{\\fonttbl{\\f0\\fcharset1252}}\\'41}";
+                const input = String.raw`{\rtf1\ansi\fromhtml1\deff0{\fonttbl{\f0\fcharset1252}}\'41}`;
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
@@ -452,7 +462,7 @@ describe('DeEncapsulate', () => {
             });
 
             it('should ignore text inside htmlrtf suppression', async () => {
-                const input = "{\\rtf1\\ansi\\ansicpg1252\\fromhtml1\\deff0{\\fonttbl{\\f0}}\\htmlrtf hello\\htmlrtf0}";
+                const input = String.raw`{\rtf1\ansi\ansicpg1252\fromhtml1\deff0{\fonttbl{\f0}}\htmlrtf hello\htmlrtf0}`;
                 const result = await process(input);
 
                 expect(result.warnings).to.be.an('array').of.length(0);
