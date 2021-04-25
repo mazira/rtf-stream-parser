@@ -1028,7 +1028,7 @@ export const words: { [word: string]: WordType } = {
     "noline": WordType.FLAG,
     "nolnhtadjtbl": WordType.FLAG,
     "nonesttables": WordType.DESTINATION,
-    "nonshppict": WordType.FLAG,
+    "nonshppict": WordType.DESTINATION,
     "nooverflow": WordType.FLAG,
     "noproof": WordType.FLAG,
     "noqfpromote": WordType.FLAG,

@@ -37,7 +37,7 @@ const charsetToCpg: { [charset: number]: number } = {
 };
 
 // Make reverse map of codepages
-const codpages: { [charset: number]: true } = {
+const codepages: { [charset: number]: true } = {
     // Seen in the wild... these codepages don't have a corresponding charset,
     // so in that case the charset is just set to the codepage directly
     20127: true,
@@ -45,7 +45,7 @@ const codpages: { [charset: number]: true } = {
 };
 for (const charset in charsetToCpg) {
     const cpg = charsetToCpg[charset];
-    codpages[cpg] = true;
+    codepages[cpg] = true;
 }
 
 const handleThemeFont: ControlHandler<FontGlobalState> = (global, cw) => {
@@ -141,7 +141,7 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
             // Somtimes, the \fcharset control word seems to specify a cpg directly...
             // This seems incorrect, but has been found in the wild for 1252 and 20127
-            if (!isNum(cpg) && codpages[cw.param]) {
+            if (!isNum(cpg) && codepages[cw.param]) {
                 cpg = cw.param;
             }
 
