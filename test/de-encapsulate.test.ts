@@ -106,6 +106,16 @@ describe('DeEncapsulate', () => {
             }
         });
 
+        it('should allow body "{\\rtf" starts', async () => {
+            const input = '{\\rtf\\ansi\\fromhtml1\\uc0{{{{{{hi}}}}}}}';
+            const result = await process(input);
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(result.decodings).to.deep.equal(['cp1252']);
+
+            expect(result.asText).to.eql('hi');
+        });
+
         it('should throw an error if \\fromhtml1 not in first 10 tokens (and in HTML-only mode)', async () => {
             await expect(process('{\\rtf1}', { mode: 'html' }))
                 .to.be.rejectedWith('Not encapsulated HTML file');

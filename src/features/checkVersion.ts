@@ -10,7 +10,7 @@ export const checkVersion: FeatureHandler<TokenCountGlobalState> = {
         }
 
         // Second token should be \rtf1
-        if (global._count === 2 && (token.word !== 'rtf' || (token.param !== 0 && token.param !== 1))) {
+        if (global._count === 2 && (token.word !== 'rtf' || (token.param && token.param !== 1))) {
             throw new Error('File should start with "{\\rtf[0,1]"');
         }
     },
