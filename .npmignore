@@ -3,4 +3,5 @@
 /src/
 /test/
 /dist/test/
+/dist/cli/
 /tsconfig.json
