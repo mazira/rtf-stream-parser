@@ -22,6 +22,8 @@ async function run(filepath?: string) {
         encode: (str, enc) => {
             return iconvLite.encode(str, enc);
         },
+        htmlFixContentType: true,
+        htmlPreserveSpaces: true,
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         warn: () => { },
     };

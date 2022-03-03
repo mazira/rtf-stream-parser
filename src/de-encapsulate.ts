@@ -28,6 +28,7 @@ interface DeEncGlobalState extends ProcessTokensGlobalState, DeEncapsulationGlob
 interface DeEncapsulateExtraOptions {
     htmlEncodeNonAscii: boolean;
     htmlFixContentType: boolean;
+    htmlPreserveSpaces: boolean;
     mode: Mode;
     prefix: boolean;
     outlookQuirksMode: boolean;
@@ -36,6 +37,7 @@ interface DeEncapsulateExtraOptions {
 const deEncExtraDefaultOptions: DeEncapsulateExtraOptions = {
     htmlEncodeNonAscii: false,
     htmlFixContentType: false,
+    htmlPreserveSpaces: false,
     mode: 'either',
     prefix: false,
     outlookQuirksMode: false,
@@ -47,17 +49,38 @@ function htmlEntityEncode(str: string) {
     const pieces: string[] = [];
     let ascii = true;
     for (const char of str) {
-        const codepoint = char.codePointAt(0) as number;
-        if (codepoint > 0x7F) {
-            ascii = false;
-            pieces.push('&#x' + codepoint.toString(16) + ';');
+        if (char === '<') {
+            pieces.push('&lt;');
+        } else if (char === '>') {
+            pieces.push('&gt;');
+        } else if (char === '&') {
+            pieces.push('&amp;');
         } else {
-            pieces.push(char);
+            const codepoint = char.codePointAt(0) as number;
+            if (codepoint === 0xA0) {
+                ascii = false;
+                pieces.push('&nbsp;');
+            } else if (codepoint > 0x7F) {
+                ascii = false;
+                pieces.push('&#x' + codepoint.toString(16) + ';');
+            } else {
+                pieces.push(char);
+            }
         }
     }
 
     const out = ascii ? str : pieces.join('');
     return out;
+}
+
+const mapHtml: Record<string, string> = {
+    '&': '&amp;',
+    '<': '&lt;',
+    '>': '&gt;',
+};
+
+function escapeHtml5(text: string): string {
+    return text.replace(/[&<>]/g, (m => mapHtml[m] || ''));
 }
 
 const rxCharset = /(\bcharset=)([\w-]+)(")/i;
@@ -88,9 +111,6 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
     public _didHtmlCharsetReplace = false;
     public _originalHtmlCharset: string | undefined;
 
-
-    private readonly _bufdIsHtml = false;
-
     /**
      * @param {('text'|'html'|'either')-} mode Whether to de-encapsulate only text, html, or both. Will emit an error if stream doesn't match. Defaults to html.
      * @param {boolean} prefix Whether to prefix the output text with "html:" or "text:" depending on the encapsulation mode
@@ -117,21 +137,41 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
     }
 
     _getOutputAsString(data: string | Buffer, font?: FontTableEntry): [string, boolean] {
-        const result = super._getOutputAsString(data, font);
+        // eslint-disable-next-line prefer-const
+        let [outStr, areSymbolFontCodepoints] = super._getOutputAsString(data, font);
 
-        if (result && this._bufdIsHtml && this._options.htmlFixContentType && !this._didHtmlCharsetReplace) {
-            result[0] = result[0].replace(rxCharset, (match, pre, charset, post) => {
-                this._didHtmlCharsetReplace = true;
-                this._originalHtmlCharset = charset;
-                return pre + 'UTF-8' + post;
-            });
+        if (this._fromhtml) {
+            const insideHtmltag = !!this._state.allDestinations?.['htmltag'];
+            if (insideHtmltag) {
+                if (this._options.htmlFixContentType && !this._didHtmlCharsetReplace) {
+                    outStr = outStr.replace(rxCharset, (match, pre, charset, post) => {
+                        this._didHtmlCharsetReplace = true;
+                        this._originalHtmlCharset = charset;
+                        return pre + 'UTF-8' + post;
+                    });
+                }
+            } else {
+                if (this._options.htmlPreserveSpaces) {
+                    if (outStr === ' ') {
+                        outStr = '\u00A0';
+                    } else {
+                        outStr = outStr
+                            .replace(/  +/g, match => ' ' + '\u00A0'.repeat(match.length - 1))
+                            .replace(/^ +/, match => '\u00A0'.repeat(match.length))
+                            .replace(/ +$/, match => '\u00A0'.repeat(match.length));
+                    }
+                }
+
+                // Escape non-tag text
+                if (this._options.htmlEncodeNonAscii) {
+                    outStr = htmlEntityEncode(outStr);
+                } else {
+                    outStr = escapeHtml5(outStr);
+                }
+            }
         }
 
-        if (result && this._fromhtml && this._options.htmlEncodeNonAscii) {
-            result[0] = htmlEntityEncode(result[0]);
-        }
-
-        return result;
+        return [outStr, areSymbolFontCodepoints];
     }
 
     _getCurrentFont(): FontTableEntry | undefined {
