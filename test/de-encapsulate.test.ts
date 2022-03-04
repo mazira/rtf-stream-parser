@@ -573,7 +573,7 @@ describe('DeEncapsulate', () => {
                 expect(result.asText).to.eql('');
             });
 
-            it('should properly escape "<", ">", "&" at a minimum', async () => {
+            it('should properly escape "<" and ">" in non-tag text at a minimum', async () => {
                 const input = [
                     String.raw`{\rtf1\ansi\fbidis\ansicpg1252\deff0\fromhtml1{\fonttbl}`,
                     String.raw`\htmlrtf\par\htmlrtf0{\*\htmltag0 <p class=MsoNormal><o:p>}\pard\plain\htmlrtf{\f2\lang1033\fs22\htmlrtf0 <hello&`,
@@ -586,10 +586,10 @@ describe('DeEncapsulate', () => {
                 expect(result.warnings).to.be.an('array').of.length(0);
                 expect(result.decodings).to.be.an('array').of.length(1);
 
-                expect(result.asText).to.eql('<p class=MsoNormal><o:p>&lt;hello&amp;\u00A0goodbye&gt;</o:p></P>');
+                expect(result.asText).to.eql('<p class=MsoNormal><o:p>&lt;hello&\u00A0goodbye&gt;</o:p></P>');
             });
 
-            it('should properly escape "<", ">", "&" and > 0x7F with htmlEncodeNonAscii option', async () => {
+            it('should properly escape "<", ">", and anything > 0x7F in non-tag text with htmlEncodeNonAscii option', async () => {
                 const input = [
                     String.raw`{\rtf1\ansi\fbidis\ansicpg1252\deff0\fromhtml1{\fonttbl}`,
                     String.raw`\htmlrtf\par\htmlrtf0{\*\htmltag0 <p class=MsoNormal><o:p>}\pard\plain\htmlrtf{\f2\lang1033\fs22\htmlrtf0 <hello&`,
@@ -604,7 +604,7 @@ describe('DeEncapsulate', () => {
                 expect(result.warnings).to.be.an('array').of.length(0);
                 expect(result.decodings).to.be.an('array').of.length(1);
 
-                expect(result.asText).to.eql('<p class=MsoNormal><o:p>&lt;hello&amp;&nbsp;goodbye&gt;</o:p></P>');
+                expect(result.asText).to.eql('<p class=MsoNormal><o:p>&lt;hello&&nbsp;goodbye&gt;</o:p></P>');
             });
 
             it('should attempt to preserve spaces to better match Outlook output with htmlPreserveSpaces option', async () => {

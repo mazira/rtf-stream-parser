@@ -49,38 +49,20 @@ function htmlEntityEncode(str: string) {
     const pieces: string[] = [];
     let ascii = true;
     for (const char of str) {
-        if (char === '<') {
-            pieces.push('&lt;');
-        } else if (char === '>') {
-            pieces.push('&gt;');
-        } else if (char === '&') {
-            pieces.push('&amp;');
+        const codepoint = char.codePointAt(0) as number;
+        if (codepoint === 0xA0) {
+            ascii = false;
+            pieces.push('&nbsp;');
+        } else if (codepoint > 0x7F) {
+            ascii = false;
+            pieces.push('&#x' + codepoint.toString(16) + ';');
         } else {
-            const codepoint = char.codePointAt(0) as number;
-            if (codepoint === 0xA0) {
-                ascii = false;
-                pieces.push('&nbsp;');
-            } else if (codepoint > 0x7F) {
-                ascii = false;
-                pieces.push('&#x' + codepoint.toString(16) + ';');
-            } else {
-                pieces.push(char);
-            }
+            pieces.push(char);
         }
     }
 
     const out = ascii ? str : pieces.join('');
     return out;
-}
-
-const mapHtml: Record<string, string> = {
-    '&': '&amp;',
-    '<': '&lt;',
-    '>': '&gt;',
-};
-
-function escapeHtml5(text: string): string {
-    return text.replace(/[&<>]/g, (m => mapHtml[m] || ''));
 }
 
 const rxCharset = /(\bcharset=)([\w-]+)(")/i;
@@ -151,6 +133,11 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
                     });
                 }
             } else {
+                // Generally, the non-tag parts are already escaped with HTML entities, e.g. "&amp;" and "&lt;", but not always.
+                outStr = outStr.replace(/<|>/g, match => {
+                    return match === '<' ? '&lt;' : '&gt;';
+                });
+
                 if (this._options.htmlPreserveSpaces) {
                     if (outStr === ' ') {
                         outStr = '\u00A0';
@@ -165,8 +152,6 @@ export class DeEncapsulate extends ProcessTokens implements DeEncGlobalState {
                 // Escape non-tag text
                 if (this._options.htmlEncodeNonAscii) {
                     outStr = htmlEntityEncode(outStr);
-                } else {
-                    outStr = escapeHtml5(outStr);
                 }
             }
         }
