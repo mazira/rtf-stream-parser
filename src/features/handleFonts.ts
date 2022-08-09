@@ -49,29 +49,26 @@ for (const charset in charsetToCpg) {
 }
 
 const handleThemeFont: ControlHandler<FontGlobalState> = (global, cw) => {
-    if (!global._constructingFontTableEntry) {
-        throw new Error(cw + ' not in fonttbl');
+    if (global._constructingFontTableEntry) {
+        global._constructingFontTableEntry.themeFont = cw.word.slice(1);
     }
 
-    global._constructingFontTableEntry.themeFont = cw.word.slice(1);
 };
 
 const handleFontFamily: ControlHandler<FontGlobalState> = (global, cw) => {
-    if (!global._constructingFontTableEntry) {
-        throw new Error(cw + ' not in fonttbl');
+    if (global._constructingFontTableEntry) {
+        global._constructingFontTableEntry.fontFamily = cw.word.slice(1);
     }
-
-    global._constructingFontTableEntry.fontFamily = cw.word.slice(1);
 };
 
 const fontTokenHandlers: TokenHandlers<FontGlobalState> = {
     [TokenType.GROUP_START]: global => {
-        if (global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth + 1) {
+        if (global._constructingFontTable && global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth + 1) {
             global._constructingFontTableEntry = {};
         }
     },
     [TokenType.GROUP_END]: global => {
-        if (global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth) {
+        if (global._constructingFontTable && global._state.destination === 'fonttbl' && global._state.groupDepth === global._state.destGroupDepth) {
             if (!global._constructingFontTableEntry || !global._constructingFontTableKey) {
                 throw new Error('Finished a font table group but no key?');
             }
@@ -79,13 +76,23 @@ const fontTokenHandlers: TokenHandlers<FontGlobalState> = {
             global._constructingFontTableEntry = undefined;
             global._constructingFontTableKey = undefined;
         }
+
+        // Track when we are done constructing the font table, so that we can ignore any additional font tables
+        if (global._constructingFontTable && global._state.destGroupDepth === 1) {
+            global._constructingFontTable = false;
+        }
     }
 };
 
 const fontControlHandlers: ControlHandlers<FontGlobalState> = {
     // Set a default font, probably before font table
     deff: (global, cw) => {
-        if (global._state.destination !== 'rtf')
+        // Ignore \deff in some non-root \rtf group
+        if (global._state.destination === 'rtf' && global._state.destDepth > 1 && typeof global._deff !== 'undefined') {
+            return;
+        }
+
+        if (global._state.destination !== 'rtf' || global._state.destDepth !== 1)
             throw new Error('\\deff not at root group');
         if (typeof global._deff !== 'undefined')
             throw new Error('\\deff already defined');
@@ -95,11 +102,21 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
     // Handle initializing the font table
     fonttbl: global => {
+        // Ignore \fonttbl in some non-root \rtf group
+        if (global._fonttbl && global._state.destGroupDepth > 2) {
+            // Font table already created, ignore this
+            global._options.warn('Got additional \\fonttbl');
+            return;
+        }
+
+
         if (global._fonttbl) {
             throw new Error('fonttbl already created');
         } else if (global._state.destDepth !== 2 || global._state.destGroupDepth !== 2) {
             throw new Error('fonttbl not in header');
         }
+
+        global._constructingFontTable = true;
         global._fonttbl = {};
     },
 
@@ -111,14 +128,10 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
         const f = cw.param + '';
 
-        if (global._state.destination === 'fonttbl') {
-            if (global._constructingFontTableEntry && global._constructingFontTableKey) {
-                throw new Error('\\f control word in font group which already has \\f');
-            } else if (global._constructingFontTableEntry) {
-                global._constructingFontTableKey = f;
-            } else {
-                throw new Error('Got strange \\f control word in fonttbl but not in fonttbl entry');
-            }
+        if (global._constructingFontTableEntry && global._constructingFontTableKey) {
+            throw new Error('\\f control word in font group which already has \\f');
+        } else if (global._constructingFontTableEntry) {
+            global._constructingFontTableKey = f;
         } else {
             // Not building font table, set current font
             // Set current font
@@ -128,8 +141,9 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
     // Handle fcharset inside \fonttbl
     fcharset: (global, cw) => {
+        // Ignore if not in main font table
         if (!global._constructingFontTableEntry) {
-            throw new Error('fcharset not in fonttbl');
+            return;
         }
 
         if (!isNum(cw.param)) {
@@ -155,8 +169,9 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 
     // Handle cpg inside \fonttbl
     cpg: (global, cw) => {
+        // Ignore if not in main font table
         if (!global._constructingFontTableEntry) {
-            throw new Error('cpg not in fonttbl');
+            return;
         }
 
         const cpg = cw.param;
@@ -189,11 +204,7 @@ const fontControlHandlers: ControlHandlers<FontGlobalState> = {
 };
 
 const fontTextHandler: TextHandler<FontGlobalState> = (global, data) => {
-    if (global._state.destination === 'fonttbl') {
-        if (!global._constructingFontTableEntry) {
-            throw new Error('fonttbl text with no current font');
-        }
-
+    if (global._constructingFontTableEntry) {
         // Has trailing semicolon
         if (!isStr(data)) {
             data = data.toString('latin1');

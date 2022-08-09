@@ -9,7 +9,7 @@ const pipelineAsync = promisify(pipeline);
 
 async function run(filepath?: string) {
     if (!filepath) {
-        console.log('Usage: ts-node to-text <filepath>');
+        console.log('Usage: ts-node de-encapsulate <filepath>');
         return;
     }
 
@@ -25,7 +25,9 @@ async function run(filepath?: string) {
         htmlFixContentType: true,
         htmlPreserveSpaces: true,
         // eslint-disable-next-line @typescript-eslint/no-empty-function
-        warn: () => { },
+        warn: msg => {
+            console.warn('WARN: ' + msg);
+        },
     };
 
     const deEncapsulate = new DeEncapsulate(options);

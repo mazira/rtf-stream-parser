@@ -14,14 +14,18 @@ const characterSetControlHandlers: ControlHandlers<CharacterSetGlobalState> = {
         throw new Error('Unsupported character set \\pca');
     },
     ansicpg: (global, token) => {
-        if (global._state.destination !== 'rtf') {
-            throw new Error('\\ansicpg not at root group');
+        // Ignore \ansicpg in some non-root \rtf group
+        if (global._state.destination === 'rtf' && global._state.destDepth > 1 && global._ansicpg) {
+            return;
         }
+
         if (global._ansicpg) {
-            throw new Error('\\ansicpg already defined');
+            global._options.warn('\\ansicpg already defined');
+            return;
         }
         if (!isNum(token.param)) {
-            throw new Error('\\ansicpg with no param');
+            global._options.warn('\\ansicpg with no param');
+            return;
         }
 
         global._ansicpg = true;

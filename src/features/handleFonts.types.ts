@@ -22,5 +22,6 @@ export interface FontGlobalState extends GlobalStateWithGroupState<FontGroupStat
     _deff?: string;
     _fonttbl?: FontTable;
     _constructingFontTableEntry?: FontTableEntry;
+    _constructingFontTable?: boolean;
     _constructingFontTableKey?: string;
 }

@@ -301,6 +301,25 @@ describe('DeEncapsulate', () => {
 
                 expect(result.asText).to.eql('hi' + String.fromCodePoint(0xF020));
             });
+
+            it('should handle a nested, trailing RTF section similarly to Outlook (seen in the wild with email signatures)', async () => {
+                const input = String.raw`{\rtf1\ansi\ansicpg1252\fromhtml1 \deff0 {\fonttbl {\f0\fswiss\fcharset0 Arial;} {\f1\fmodern Courier New;} {\f2\fnil\fcharset2 Symbol;} {\f3\fmodern\fcharset0 Courier New;} }`
+                    + String.raw`{\colortbl\red0\green0\blue0;\red0\green0\blue255;}\pard\plain\deftab360 \f0\fs24`
+                    + String.raw`{\*\htmltag19 <html>}`
+                    + String.raw`{\*\htmltag34 <head>}`
+                    + String.raw`{\*\htmltag41 </head>}`
+                    + String.raw`{\*\htmltag50 <body>}`
+                    + String.raw`{\htmlrtf0 hello\htmlrtf}\htmlrtf0 `
+                    + String.raw`{\*\htmltag58 </body>}`
+                    + String.raw`{\*\htmltag27 </html>}`
+                    + String.raw`{\rtf1\ansi\ansicpg1252\deff0\deflang1033 {\fonttbl {\f0\fnil\fcharset0 ; } }\plain ******\par Only the individual sender is responsible for the content of the\par message.}}`;
+                const result = await process(input);
+
+                expect(result.warnings).to.be.an('array').of.length(1);
+                expect(result.decodings).to.deep.equal(['cp1252']);
+
+                expect(result.asText).to.eql('<html><head></head><body>hello</body></html>******\r\nOnly the individual sender is responsible for the content of the\r\nmessage.');
+            });
         });
 
         describe('from inside htmltag destinations', () => {
@@ -720,7 +739,6 @@ describe('DeEncapsulate', () => {
             expect(result.asText).to.eql(`\u0080\u0080😀\r\n€\u0080😀`);
         });
     });
-
 
     describe('symbolic fonts', async () => {
         it('should treat symbolic font characters as literal Unicode codepoints by default', async () => {
