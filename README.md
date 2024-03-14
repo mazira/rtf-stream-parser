@@ -150,6 +150,7 @@ new DeEncapsulate(options);
     * `htmlEncodeNonAscii`: `Boolean` - Defaults to `false`. Indicates whether non-ASCII (e.g. > U+007F) characters should be HTML-encoded when de-encapsulating HTML data.
      symbol font (e.g. Wingdings) characters should be replaced with their closest Unicode symbol in the output text.
     * `htmlFixContentType`: `Boolean` - Defaults to `false`. Indicates whether the de-encapsulator should scan for and replace any original HTML `charset` header with a new `UTF-8` value to match the output text.
+    * `allowCp0`: `Boolean` - New in 3.7 - allows user to handle codepage 0 (system / default) instead of throwing. When `true`, the `decode` callback may get an encoding of `cp0` if the RTF file has some text that explicilty uses codepage 0.
 
 
 ## Future Work

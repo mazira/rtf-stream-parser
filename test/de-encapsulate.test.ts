@@ -860,6 +860,40 @@ describe('DeEncapsulate', () => {
             expect(result.asBuffer.toString('utf16le')).to.eql(`Plain text body: ! < > " ' € œ ¤ ´ ¼ ½ 𠜎 𩶘 😀\r\n`);
         });
 
+        it('should throw on codepage 0 (default / undefined) text by default', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg0\\fromhtml1\\uc0\\deff0{\\fonttbl{\\f0}}\\'e2\\'80\\'98hi\\u8217}`;
+
+            try{
+                await process(input);
+            } catch (err){
+                expect(err.message).to.include('text with no codepage');
+                return;
+            }
+
+            throw new Error('Expected operation to fail');
+        });
+
+        it('should allow decoding codepage 0 (default / undefined) with special option', async () => {
+            const input = `{\\rtf1\\ansi\\ansicpg0\\fromhtml1\\uc0\\deff0{\\fonttbl{\\f0}}\\'e2\\'80\\'98hi\\u8217}`;
+
+            const decodings:string[] = [];
+
+            const result = await process(input, {
+                allowCp0: true,
+                // Override
+                decode: (buf, enc) => {
+                    decodings.push(enc);
+                    return iconvLite.decode(buf, 'utf8');
+                }
+            });
+
+            expect(result.warnings).to.be.an('array').of.length(0);
+            expect(decodings).to.be.an('array').of.length(2);
+            expect(decodings).to.eql(['cp0', 'cp0']);
+
+            expect(result.asText).to.eql(`‘hi’`);
+        });
+
         /**
          * This isn't very clear in the spec, but I've seen Outlook create RTF that has too many closing brackets
          * that prematurely close the {\rtf...} destination if { and } are tracked inside htmlrtf ignores. Ignoring

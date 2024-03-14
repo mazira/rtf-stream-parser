@@ -116,12 +116,10 @@ export abstract class ProcessTokens extends Transform implements ProcessTokensGl
             if (cpg === 20127 || cpg === 65001) {
                 outStr = data.toString('utf8');
             } else if (cpg === 1200) {
-                throw new Error('Decoding 1200');
                 outStr = data.toString('utf16le');
-            } else if (cpg) {
+            } else if (cpg || this._options.allowCp0) {
                 outStr = this._options.decode(data, 'cp' + cpg);
             } else {
-                console.log('HELP1!');
                 throw new Error('text with no codepage');
             }
         }

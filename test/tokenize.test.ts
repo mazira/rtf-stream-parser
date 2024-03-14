@@ -15,7 +15,7 @@ describe('Tokenize', () => {
                 streamIn.push(input);
             }
             streamIn.push(null);
-        }, 1)
+        }, 1);
 
         const result = await p;
         return result;
@@ -129,5 +129,22 @@ describe('Tokenize', () => {
         const result2 = await process(["\\'"]);
         expect(result2).to.be.an('array').of.length(1);
         expect(result2[0]).to.eql({ type: TokenType.CONTROL, word: "'", data: Buffer.alloc(0) });
+    });
+
+    /**
+     * From spec:
+     * A carriage return (character value 13) or line feed (character value 10) is treated as a \par control if the
+     * character is preceded by a backslash.
+     */
+    it('should handle \\[CR] and \\[LF] and other non-alpha symbols in a special way, leaving trailing text & numbers', async () => {
+        const input = '\\par10\\\r10\\\n10\\~10\\tab10';
+
+        const result = await process([input]);
+
+        expect(result).to.be.an('array').of.length(8);
+        expect(result[0]).to.eql({ type: TokenType.CONTROL, word: 'par', param: 10 });
+
+        expect(result[6]).to.eql({ type: TokenType.TEXT, data: Buffer.from('10') });
+        expect(result[7]).to.eql({ type: TokenType.CONTROL, word: 'tab', param: 10 });
     });
 });

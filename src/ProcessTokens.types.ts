@@ -18,6 +18,7 @@ export interface ProcessTokensOptions {
         [font: string]: boolean
     };
     warn: (msg: string) => void;
+    allowCp0?: boolean;
 }
 
 export interface ProcessTokensGroupState extends GroupState, UnicodeSkipGroupState, ControlAndDestinationGroupState, FontGroupState { }
