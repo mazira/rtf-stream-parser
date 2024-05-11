@@ -17,13 +17,26 @@ function getModeError(global: DeEncapsulationGlobalState): Error {
 }
 
 const allTokenHandler: TokenHandler<DeEncapsulationGlobalState, Token> = (global, token) => {
-    // 2.2.3.1 Recognizing RTF Containing Encapsulation
-    if (global._count <= 10) {
-        if (token.type === TokenType.TEXT) {
+    /**
+     * From spec:
+     * 
+     * 2.2.3.1 Recognizing RTF Containing Encapsulation
+     * During the inspection, the de-encapsulating RTF reader SHOULD conclude that there is no encapsulated content and
+     * that this is a normal (pure) RTF document if any of the following conditions are true:
+     *
+     * There are any RTF tokens besides the begin group mark "{" or a control word within the first 10 tokens.
+     *
+     * There is no FROMHTML or FROMTEXT control word within the first 10 tokens. 
+     * 
+     * ---
+     * RDJ - Outlook doesn't seem to adhear to this perfectly, as some RTF files have been seen with a /fromhtml1 within
+     * the first 10, and some other "\*\htmltag1 <!DOCTYPE html PUBLIC" within the first 10, and it is still treated
+     * as encapsulated.
+     */
+    if (!global._fromhtml && !global._fromtext){
+        if (token.type === TokenType.TEXT || global._count > 10) {
             throw getModeError(global);
         }
-    } else if (!global._fromhtml && !global._fromtext) {
-        throw getModeError(global);
     }
 
     // Handle htmlrtf control word and rtf supression, done here to also supress

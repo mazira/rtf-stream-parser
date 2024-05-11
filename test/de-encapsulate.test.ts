@@ -136,9 +136,13 @@ describe('DeEncapsulate', () => {
                 .to.be.rejectedWith('Not encapsulated HTML file');
         });
 
-        it('should throw an error if any tokens besides "{" or control words are within first 10', async () => {
+        it('should throw an error if any tokens besides "{" or control words are within first 10 (before \\fromhtml1)', async () => {
             await expect(process('{\\rtf1\\t3\\t4 some text\\fromhtml1'))
                 .to.be.rejectedWith('Not encapsulated HTML or text file');
+        });
+        
+        it('should not throw an error if any tokens besides "{" or control words are within first 10 (after \\fromhtml1)', async () => {
+            await process('{\\rtf1\\t3\\t4\\fromhtml1 some text');
         });
 
         it('should not throw an error if \\fromhtml1 in first 10 tokens', async () => {
