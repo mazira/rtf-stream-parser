@@ -1,11 +1,12 @@
 import { expect } from 'chai';
 import { Readable } from 'stream';
 import { streamFlow } from '../src/stream-flow';
-import { Tokenize, TokenType } from '../src/tokenize';
+import { Token, Tokenize, TokenType } from '../src/tokenize';
 
 describe('Tokenize', () => {
-    async function process(inputs: string[]) {
+    async function process(inputs: string[]): Promise<Token[]> {
         const streamIn = new Readable();
+        // eslint-disable-next-line @typescript-eslint/no-empty-function
         streamIn._read = () => { };
         const p = streamFlow(streamIn, new Tokenize());
 
@@ -18,7 +19,7 @@ describe('Tokenize', () => {
         }, 1);
 
         const result = await p;
-        return result;
+        return result as Token[];
     }
 
     it('should allow uppercase and lowercase control words', async () => {
@@ -147,4 +148,30 @@ describe('Tokenize', () => {
         expect(result[6]).to.eql({ type: TokenType.TEXT, data: Buffer.from('10') });
         expect(result[7]).to.eql({ type: TokenType.CONTROL, word: 'tab', param: 10 });
     });
+
+    it('should handle normal text in various chunks', async () => {
+        for (const input of [['{hello how are you}'], ['{hello how ', 'are you}'], ['{hello how\r\n\r\n', ' are \r\nyou}']]) {
+            const result = await process(input);
+
+            expect(result).to.be.an('array').of.length(3);
+            expect(result[0]).to.eql({ type: TokenType.GROUP_START });
+            expect(result[1]).to.eql({ type: TokenType.TEXT, data: Buffer.from('hello how are you') });
+            expect(result[2]).to.eql({ type: TokenType.GROUP_END });
+        }
+    });
+
+    it('should work a very long text chunk in reasonable time', async () => {
+        const repeatLen = 1024 * 1024 * 100;
+        // 100 MB?
+        // Previously taking 46s for 10 MB, 3m for 20 MB
+        // Now taking 45ms for 20 MB, 204ms for 100 MB
+        const input = ['{hello how are you' + '?'.repeat(repeatLen) + '}'];
+        const result = await process(input);
+
+        expect(result).to.be.an('array').of.length(3);
+        expect(result[0]).to.eql({ type: TokenType.GROUP_START });
+        expect(result[1].type).to.eql(TokenType.TEXT);
+        expect(result[1].data?.toString('binary')).to.eql('hello how are you' + '?'.repeat(repeatLen));
+        expect(result[2]).to.eql({ type: TokenType.GROUP_END });
+    }).timeout(10 * 60000);
 });
