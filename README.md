@@ -5,6 +5,10 @@ This module exposes high-level functions where you may pass in an RTF string, Bu
 
 This code is used in production at [GoldFynch](https://goldfynch.com), an e-discovery platform, for extracting HTML and text email bodies that have passed through Outlook mail systems.
 
+## New in version 4.x
+- Memory-safety hardening: the tokenizer now bounds how much it will buffer into a single token via the `maxTokenSize` option (default 64 MiB), rejecting pathological / malicious input (e.g. a huge `\binN` param) instead of running out of memory. Note: this is the breaking change in 4.0 - input containing a single token larger than 64 MiB now errors by default. Set `maxTokenSize: Infinity` to restore the previous unbounded behavior.
+- Large text tokens spanning many input chunks are assembled in linear time rather than with repeated buffer copies.
+
 ## New in version 3.x
 - Many additional options to avoid conflicts between the original / indicated charset in the HTML and the Unicode output data, including:
   - Option to HTML-encode any non-ASCII characters in output HTML.
@@ -99,6 +103,13 @@ stream takes input of raw RTF data, generally in the form of `Buffer` chunks, an
 output chunks representing the parsed RTF operations. String input chunks are
 also accepted, but are converted to `Buffer` based on the stream's
 [default string encoding](https://nodejs.org/api/stream.html#stream_writable_setdefaultencoding_encoding).
+
+The constructor takes an optional options argument:
+```javascript
+new Tokenize(options);
+```
+* `options`: `<Object>` - Optional tokenizer options.
+    * `maxTokenSize`: `<number>` - New in 4.0. Defaults to `67108864` (64 MiB). The maximum size the tokenizer will accumulate for a single token before emitting it, measured in bytes for a `\binN` payload or a run of text (e.g. `\objdata`/`\pict` data), and in characters for a control word or its numeric parameter. (Hex escapes like `\'XX` are emitted as single one-byte tokens and are never accumulated, so they are unaffected.) This guards against pathological or malicious input causing an out-of-memory condition; in particular a large `\binN` param (e.g. `{\bin4000000000 }`) is rejected *before* any allocation, since it would otherwise eagerly commit that memory. When a token would exceed this size, the stream emits an error. Set to `Infinity` (or `0`) to disable the limit and restore the previous unbounded behavior. This option is also accepted by `deEncapsulateSync` and `deEncapsulateStream`. Note that some binary content uses hex strings instead of `\bin`, e.g. `\objdata`, so the effective cap for that data is ~half of the `maxTokenSize` option (each byte is 2 hex chars).
 
 The output objects have the following format:
 ```

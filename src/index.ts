@@ -1,6 +1,6 @@
 import { DeEncapsulate, DeEncapsulateOptions } from './de-encapsulate';
 import { streamFlow } from './stream-flow';
-import { Token, Tokenize } from './tokenize';
+import { Token, Tokenize, TokenizeOptions } from './tokenize';
 import { isDef } from './utils';
 
 export { Tokenize, DeEncapsulate };
@@ -10,14 +10,18 @@ interface Result {
     text: string | Buffer;
 }
 
-export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEncapsulateOptions>): Result {
+/** Options accepted by the de-encapsulation helpers: everything DeEncapsulate
+ *  understands, plus the tokenizer's memory-safety options. */
+type DeEncapsulateAllOptions = Partial<DeEncapsulateOptions> & Partial<TokenizeOptions>;
+
+export function deEncapsulateSync(rtf: Buffer | string, options?: DeEncapsulateAllOptions): Result {
     const onError = (err?: any) => {
         if (isDef(err)) {
             throw err;
         }
     };
 
-    const stream1 = new Tokenize();
+    const stream1 = new Tokenize(options);
     const stream2 = new DeEncapsulate(options);
 
     // Hijack the push methods
@@ -47,8 +51,8 @@ export function deEncapsulateSync(rtf: Buffer | string, options?: Partial<DeEnca
     };
 }
 
-export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: Partial<DeEncapsulateOptions>): Promise<Result> {
-    const stream1 = new Tokenize();
+export async function deEncapsulateStream(streamIn: NodeJS.ReadableStream, options?: DeEncapsulateAllOptions): Promise<Result> {
+    const stream1 = new Tokenize(options);
     const stream2 = new DeEncapsulate(options);
 
     const chunks = await streamFlow<string | Buffer>(

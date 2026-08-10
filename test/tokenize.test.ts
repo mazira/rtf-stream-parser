@@ -1,14 +1,14 @@
 import { expect } from 'chai';
 import { Readable } from 'stream';
 import { streamFlow } from '../src/stream-flow';
-import { Token, Tokenize, TokenType } from '../src/tokenize';
+import { Token, Tokenize, TokenizeOptions, TokenType } from '../src/tokenize';
 
 describe('Tokenize', () => {
-    async function process(inputs: string[]): Promise<Token[]> {
+    async function process(inputs: string[], options?: Partial<TokenizeOptions>): Promise<Token[]> {
         const streamIn = new Readable();
         // eslint-disable-next-line @typescript-eslint/no-empty-function
         streamIn._read = () => { };
-        const p = streamFlow(streamIn, new Tokenize());
+        const p = streamFlow(streamIn, new Tokenize(options));
 
         // Do in a timeout just to simulate more async-ness
         setTimeout(() => {
@@ -166,7 +166,8 @@ describe('Tokenize', () => {
         // Previously taking 46s for 10 MB, 3m for 20 MB
         // Now taking 45ms for 20 MB, 204ms for 100 MB
         const input = ['{hello how are you' + '?'.repeat(repeatLen) + '}'];
-        const result = await process(input);
+        // This text token is larger than the default maxTokenSize, so disable the limit.
+        const result = await process(input, { maxTokenSize: Infinity });
 
         expect(result).to.be.an('array').of.length(3);
         expect(result[0]).to.eql({ type: TokenType.GROUP_START });
@@ -174,4 +175,113 @@ describe('Tokenize', () => {
         expect(result[1].data?.toString('binary')).to.eql('hello how are you' + '?'.repeat(repeatLen));
         expect(result[2]).to.eql({ type: TokenType.GROUP_END });
     }).timeout(10 * 60000);
+
+    it('should correctly reassemble a text token split across many chunks', async () => {
+        const parts = ['{'];
+        for (let n = 0; n < 5000; n++) {
+            parts.push('abc');
+        }
+        parts.push('}');
+
+        const result = await process(parts);
+        expect(result).to.be.an('array').of.length(3);
+        expect(result[0]).to.eql({ type: TokenType.GROUP_START });
+        expect(result[1]).to.eql({ type: TokenType.TEXT, data: Buffer.from('abc'.repeat(5000)) });
+        expect(result[2]).to.eql({ type: TokenType.GROUP_END });
+    });
+
+    it('should accumulate a large text token fed one byte at a time in linear time', async () => {
+        // Under the old repeated-Buffer.concat approach this is O(n^2) and takes
+        // minutes; with slices collected and concatenated once it is O(n).
+        const size = 1024 * 1024;
+        const parts = ['{'];
+        for (let n = 0; n < size; n++) {
+            parts.push('a');
+        }
+        parts.push('}');
+
+        const result = await process(parts, { maxTokenSize: Infinity });
+        expect(result).to.be.an('array').of.length(3);
+        expect(result[1].type).to.eql(TokenType.TEXT);
+        expect(result[1].data?.length).to.eql(size);
+    }).timeout(30000);
+
+    describe('maxTokenSize memory safety', () => {
+        it('should reject a \\bin with a param larger than maxTokenSize before allocating', async () => {
+            // A param of ~4GB would OOM if allocated. It must be rejected up front,
+            // regardless of how few payload bytes actually follow.
+            let err: Error | undefined;
+            try {
+                await process(['{\\bin4000000000 x}'], { maxTokenSize: 1024 });
+            } catch (e) {
+                err = e as Error;
+            }
+            expect(err).to.be.an('error');
+            expect(err?.message).to.match(/bin.*exceeds maxTokenSize/);
+        });
+
+        it('should allow a \\bin at exactly maxTokenSize', async () => {
+            const result = await process(['\\bin4 abcd'], { maxTokenSize: 4 });
+            expect(result).to.be.an('array').of.length(1);
+            expect(result[0]).to.eql({ type: TokenType.CONTROL, word: 'bin', param: 4, data: Buffer.from('abcd', 'ascii') });
+        });
+
+        it('should reject a text token that grows past maxTokenSize', async () => {
+            let err: Error | undefined;
+            try {
+                await process(['{', 'a'.repeat(50), 'a'.repeat(60), '}'], { maxTokenSize: 100 });
+            } catch (e) {
+                err = e as Error;
+            }
+            expect(err).to.be.an('error');
+            expect(err?.message).to.match(/text token.*exceeds maxTokenSize/);
+        });
+
+        it('should reject a single text chunk larger than maxTokenSize', async () => {
+            let err: Error | undefined;
+            try {
+                await process(['{' + 'a'.repeat(200) + '}'], { maxTokenSize: 100 });
+            } catch (e) {
+                err = e as Error;
+            }
+            expect(err).to.be.an('error');
+            expect(err?.message).to.match(/text token.*exceeds maxTokenSize/);
+        });
+
+        it('should allow a single text chunk at exactly maxTokenSize', async () => {
+            const result = await process(['{' + 'a'.repeat(100) + '}'], { maxTokenSize: 100 });
+            expect(result).to.be.an('array').of.length(3);
+            expect(result[1]).to.eql({ type: TokenType.TEXT, data: Buffer.from('a'.repeat(100), 'ascii') });
+        });
+
+        it('should allow a text token that grows to exactly maxTokenSize across chunks', async () => {
+            const result = await process(['{', 'a'.repeat(50), 'a'.repeat(50), '}'], { maxTokenSize: 100 });
+            expect(result).to.be.an('array').of.length(3);
+            expect(result[1]).to.eql({ type: TokenType.TEXT, data: Buffer.from('a'.repeat(100), 'ascii') });
+        });
+
+        it('should reject an over-long control word', async () => {
+            let err: Error | undefined;
+            try {
+                await process(['\\' + 'a'.repeat(200)], { maxTokenSize: 100 });
+            } catch (e) {
+                err = e as Error;
+            }
+            expect(err).to.be.an('error');
+            expect(err?.message).to.match(/control word.*exceeds maxTokenSize/);
+        });
+
+        it('should allow a control word at exactly maxTokenSize', async () => {
+            const word = 'a'.repeat(100);
+            const result = await process(['\\' + word + ' '], { maxTokenSize: 100 });
+            expect(result).to.be.an('array').of.length(1);
+            expect(result[0]).to.eql({ type: TokenType.CONTROL, word });
+        });
+
+        it('should not trip the default 64 MiB limit on normal-sized content', async () => {
+            const result = await process(['{\\bin4 abcd}']);
+            expect(result).to.be.an('array').of.length(3);
+            expect(result[1]).to.eql({ type: TokenType.CONTROL, word: 'bin', param: 4, data: Buffer.from('abcd', 'ascii') });
+        });
+    });
 });

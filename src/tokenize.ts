@@ -58,25 +58,76 @@ export interface Token {
 */
 export type Token = GroupStartToken | GroupEndToken | TextToken | ControlToken;
 
+export interface TokenizeOptions {
+    /**
+     * Maximum size the tokenizer will accumulate for a single token before
+     * emitting it - measured in bytes for a `\binN` payload or a run of text
+     * (e.g. `\objdata`/`\pict` data), and in characters for a control word or
+     * its numeric parameter. Guards against pathological/malicious input (e.g.
+     * `{\bin4000000000 }`, which would otherwise eagerly allocate multiple GB)
+     * causing OOM.
+     *
+     * (Hex escapes like `\'XX` are emitted as single one-byte tokens and are
+     * never accumulated, so they are unaffected by this limit.)
+     *
+     * When a token would exceed this size the stream emits an error. Set to
+     * `Infinity` (or `0`) to disable the limit and restore unbounded buffering.
+     *
+     * Defaults to 64 MiB, which is well above any realistic RTF token.
+     */
+    maxTokenSize: number;
+}
+
+export const tokenizeDefaultOptions: TokenizeOptions = {
+    maxTokenSize: 64 * 1024 * 1024,
+};
+
 const isAlpha = (c: number) => (c > 64 && c < 91) || (c > 96 && c < 123);
 const isNumeric = (c: number) => c > 47 && c < 58;
 
 export class Tokenize extends Transform {
+    protected _options: TokenizeOptions;
     protected _mode: Mode | undefined;
     protected _token: Token | null | undefined;
     protected _expectedBinaryBytes = 0;
     protected _readHexDigitsCount = 0;
     protected _paramStr = '';
 
-    constructor() {
+    // While a TEXT token spans multiple input chunks, its slices are collected
+    // here and concatenated once at flush - avoiding O(n^2) repeated Buffer.concat
+    // as the token grows. Null when the current text token (if any) is a single
+    // slice that needs no concatenation.
+    protected _textChunks: Buffer[] | null = null;
+
+    constructor(options?: Partial<TokenizeOptions>) {
         super({ readableObjectMode: true });
+        this._options = { ...tokenizeDefaultOptions, ...options };
         this._mode = Mode.NORMAL;
+    }
+
+    /**
+     * Throws if `size` exceeds the configured `maxTokenSize`, so the caller
+     * never allocates or grows a token past the limit. A non-finite or
+     * non-positive limit disables the check.
+     */
+    _checkTokenSize(size: number, context: string): void {
+        const max = this._options.maxTokenSize;
+        if (Number.isFinite(max) && max > 0 && size > max) {
+            throw new Error(
+                `RTF ${context} of ${size} exceeds maxTokenSize of ${max}`
+            );
+        }
     }
 
     _flushToken(): void {
         const token = this._token;
 
         if (token) {
+            // Materialize a multi-chunk TEXT token with a single concat.
+            if (this._textChunks) {
+                token.data = Buffer.concat(this._textChunks, token.length);
+            }
+
             // Make param a number
             if (this._paramStr) {
                 token.param = Number.parseInt(this._paramStr, 10);
@@ -98,6 +149,7 @@ export class Tokenize extends Transform {
 
         // Reset state
         this._token = null;
+        this._textChunks = null;
         this._readHexDigitsCount = 0;
         this._paramStr = '';
 
@@ -110,8 +162,16 @@ export class Tokenize extends Transform {
         const param = parseInt(this._paramStr || '0', 10) || 0;
 
         if (token.type === TokenType.CONTROL && token.word === 'bin' && param > 0) {
+            // Check before allocating: `param` is untrusted and could otherwise
+            // request a huge buffer, OOMing immediately - before any payload byte
+            // is read.
+            this._checkTokenSize(param, "'\\bin' data");
             this._mode = Mode.BINARY;
-            token.data = Buffer.alloc(param);
+            // allocUnsafe (no zero-fill) is safe here: BINARY mode fills the
+            // buffer sequentially from index 0, and _flushToken slices off any
+            // unwritten tail (buf.slice(0, token.length)), so uninitialized bytes
+            // are never emitted. This avoids zero-filling up to maxTokenSize.
+            token.data = Buffer.allocUnsafe(param);
             token.length = 0;
         } else if (token.type === TokenType.CONTROL && token.word === '\'') {
             this._mode = Mode.HEX;
@@ -135,7 +195,12 @@ export class Tokenize extends Transform {
 
     __transform(chunk: Buffer | string, encoding: string | undefined): void {
         const buf = isStr(chunk) ? Buffer.from(chunk, encoding as BufferEncoding) : chunk;
-        const binStr = buf.toString('binary');
+
+        // Only needed by the NORMAL text branch below, and decoding the whole
+        // chunk isn't free - so compute it lazily and reuse it for the rest of
+        // the chunk. Chunks that are all binary / hex / control data never pay
+        // for the decode.
+        let binStr: string | undefined;
 
         const len = buf.length;
         for (let i = 0; i < len; i++) {
@@ -147,7 +212,14 @@ export class Tokenize extends Transform {
                     const token = this._token as ControlToken;
 
                     if (token.data && isNum(token.length)) {
-                        token.data[token.length++] = c;
+                        // Copy as much of the remaining payload as this chunk holds
+                        // in one shot, rather than looping a byte at a time.
+                        const need = token.data.length - token.length;
+                        const avail = len - i;
+                        const n = need < avail ? need : avail;
+                        buf.copy(token.data, token.length, i, i + n);
+                        token.length += n;
+                        i += n - 1; // -1 because the for-loop will i++
                     }
 
                     // If we have filled the buffer, stop!
@@ -210,6 +282,7 @@ export class Tokenize extends Transform {
                     // this._token is of type 'CONTROL'
                     // If alpha, buffer word
                     if (isAlpha(c)) {
+                        this._checkTokenSize(token.word.length + 1, 'control word');
                         token.word += String.fromCharCode(c);
                     }
                     // Check for number or negative sign
@@ -236,6 +309,7 @@ export class Tokenize extends Transform {
 
                     // If alpha, buffer word
                     if (isNumeric(c)) {
+                        this._checkTokenSize(this._paramStr.length + 1, 'control word parameter');
                         this._paramStr += String.fromCharCode(c);
                     }
                     // End of control param
@@ -273,6 +347,9 @@ export class Tokenize extends Transform {
                             // This regex approach seems about 12% faster than just
                             // iterating the Buffer
                             const start = i;
+                            if (binStr === undefined) {
+                                binStr = buf.toString('binary');
+                            }
                             const rx = /[\r\n{}\\]/g;
                             rx.lastIndex = i;
                             const endMatch = rx.exec(binStr);
@@ -284,6 +361,7 @@ export class Tokenize extends Transform {
 
                             // Start or append to text token
                             if (!token) {
+                                this._checkTokenSize(slice.length, 'text token');
                                 this._token = {
                                     type: TokenType.TEXT,
                                     data: slice,
@@ -291,8 +369,15 @@ export class Tokenize extends Transform {
                                 };
                                 i = end - 1;
                             } else if (token && token.type === TokenType.TEXT) {
-                                token.length += slice.length;
-                                token.data = Buffer.concat([token.data, slice], token.length);
+                                const newLength = token.length + slice.length;
+                                this._checkTokenSize(newLength, 'text token');
+                                // Collect slices and concat once at flush (see _flushToken)
+                                // rather than re-copying the whole token on every chunk.
+                                if (!this._textChunks) {
+                                    this._textChunks = [token.data];
+                                }
+                                this._textChunks.push(slice);
+                                token.length = newLength;
                                 i = end - 1;
                             } else {
                                 throw new Error('Unpushed token!');
