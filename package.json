@@ -5,7 +5,9 @@
   "main": "dist/src/index.js",
   "types": "dist/src/index.d.ts",
   "scripts": {
-    "test": "tsc && mocha --reporter spec dist/test"
+    "build": "tsc",
+    "test": "tsc && mocha --reporter spec dist/test",
+    "prepublishOnly": "tsc"
   },
   "repository": {
     "type": "git",

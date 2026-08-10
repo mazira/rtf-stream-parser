@@ -3,7 +3,7 @@ import { streamFlow } from './stream-flow';
 import { Token, Tokenize, TokenizeOptions } from './tokenize';
 import { isDef } from './utils';
 
-export { Tokenize, DeEncapsulate };
+export { Tokenize, TokenizeOptions, DeEncapsulate };
 
 interface Result {
     mode: 'text' | 'html';
