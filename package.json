@@ -29,6 +29,9 @@
   ],
   "author": "Ross Johnson <ross@mazira.com>",
   "license": "MIT",
+  "engines": {
+    "node": ">=12"
+  },
   "bugs": {
     "url": "https://github.com/mazira/rtf-stream-parser/issues"
   },
